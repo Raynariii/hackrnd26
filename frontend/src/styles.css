@@ -46,11 +46,53 @@ h3 { margin: 8px 0; font-size: 13px; color: var(--muted); text-transform: upperc
 .file.active { background: var(--panel); color: var(--accent); }
 .selected-info code { display: block; white-space: pre-wrap; margin-top: 4px; color: var(--muted); }
 
-.block { background: var(--panel); border: 1.5px solid; border-radius: 8px; padding: 8px 10px; width: 260px; }
+/* ---- блок-схема ---- */
+.block {
+  position: relative; display: flex; align-items: center; justify-content: center;
+  background: var(--panel); border: 1.5px solid; border-radius: 6px; padding: 6px 12px;
+}
 .block.selected { box-shadow: 0 0 0 2px var(--accent); }
-.block-title { font-weight: 600; font-size: 12px; display: flex; gap: 6px; align-items: center; }
-.block-warning { background: var(--fail); color: white; border-radius: 50%; width: 16px; height: 16px; display: grid; place-items: center; font-size: 11px; }
-.block-code { font-family: ui-monospace, monospace; font-size: 11px; color: var(--text); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.block.has-findings { box-shadow: 0 0 0 2px rgba(239, 68, 68, .55); }
+.block.selected.has-findings { box-shadow: 0 0 0 2px var(--accent), 0 0 0 4px rgba(239, 68, 68, .55); }
+.block-body { position: relative; min-width: 0; max-width: 100%; text-align: center; }
+.block-title { font-weight: 600; font-size: 12px; display: flex; gap: 6px; align-items: center; justify-content: center; }
+.block-warning { background: var(--fail); color: white; border-radius: 50%; width: 16px; height: 16px; display: grid; place-items: center; font-size: 11px; flex: none; }
+.block-code { font-family: ui-monospace, monospace; font-size: 11px; color: var(--text); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* терминатор: начало/конец/return/break/continue */
+.block.shape-terminal { border-radius: 999px; padding: 4px 20px; }
+/* ромб и шестиугольник рисует SVG-контур, у самого блока рамки нет */
+.block.shape-decision, .block.shape-loop { background: transparent; border-color: transparent !important; border-radius: 0; }
+.block.shape-decision.selected, .block.shape-loop.selected,
+.block.shape-decision.has-findings, .block.shape-loop.has-findings { box-shadow: none; }
+.block.shape-decision.selected .block-outline polygon, .block.shape-loop.selected .block-outline polygon { stroke: var(--accent); stroke-width: 2.5; }
+.block.shape-decision.has-findings .block-outline polygon, .block.shape-loop.has-findings .block-outline polygon { fill: #2a1520; }
+.block-outline { position: absolute; inset: 0; }
+.block.shape-decision .block-body { max-width: 62%; }
+.block.shape-loop .block-body { max-width: 78%; }
+/* вызов — «предопределённый процесс»: двойные боковые линии */
+.block.shape-call::before, .block.shape-call::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 0; border-left: 1.5px solid var(--kind);
+}
+.block.shape-call::before { left: 8px; }
+.block.shape-call::after { right: 8px; }
+.block.shape-call { padding: 6px 18px; }
+/* raw — код как есть */
+.block.shape-raw { border-style: dashed; align-items: stretch; justify-content: flex-start; }
+.block.shape-raw .block-body { text-align: left; width: 100%; overflow: hidden; }
+.block.shape-raw .block-title { justify-content: flex-start; }
+.block.shape-raw .block-code { white-space: pre; color: var(--muted); }
+
+.react-flow__handle.handle-side { opacity: 0; }
+
+/* рамка группы: тело цикла, try/catch, switch */
+.frame {
+  width: 100%; height: 100%; border: 1.5px dashed; border-radius: 10px;
+  background: color-mix(in srgb, var(--kind) 6%, transparent); pointer-events: none;
+}
+.frame-title { position: absolute; top: 8px; left: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.react-flow__node-frame { pointer-events: none; }
+.react-flow__edge-textbg { rx: 4; }
 
 .finding { display: block; width: 100%; text-align: left; margin-bottom: 8px; border-left-width: 3px; }
 .finding.sev-high { border-left-color: var(--fail); }

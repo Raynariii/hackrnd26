@@ -8,7 +8,8 @@
     "dev:mock": "VITE_USE_MOCKS=true vite",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --noEmit",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test 'src/**/*.test.ts'"
   },
   "dependencies": {
     "@monaco-editor/react": "4.6.0",
