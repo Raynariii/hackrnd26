@@ -113,7 +113,7 @@ public final class StringConcatInLoopRule implements Rule {
                         + "и даёт " + after + ".",
                 assign, List.of(assign),
                 new Complexity(current.toString(), after.toString()),
-                new Fix("string-builder", "Заменить конкатенацию на StringBuilder", preview, false),
+                new Fix("string-builder", "Заменить конкатенацию на StringBuilder", preview, true),
                 "Убирает копирование строки на каждой итерации: " + current + " → " + after);
     }
 }

@@ -70,7 +70,7 @@ public final class CollectionLookupInLoopRule implements Rule {
                 new Complexity(current.toString(), after.toString()),
                 new Fix("index-by-key",
                         "Построить HashSet/HashMap по коллекции и искать по ключу",
-                        preview, false),
+                        preview, true),
                 "Убирает линейный поиск на каждой итерации: " + current + " → " + after);
     }
 }

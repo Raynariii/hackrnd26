@@ -69,13 +69,17 @@ public final class MagicNumberRule implements Rule {
             return;
         }
         String list = String.join(", ", values);
+        String first = values.iterator().next();
+        String constant = "LIMIT_" + first.replace('-', 'M').replace('.', '_');
+        String preview = "private static final int " + constant + " = " + first + ";\n"
+                + "// в условии: вместо " + list + " — " + constant;
         out.add(Findings.of(model, RULE, Severity.MEDIUM,
                 "Магическое число в условии",
                 "В условии используются числа без имени: " + list + ". Смысл границы непонятен из кода, "
                         + "а при изменении правила легко поправить не все места — вынесите значения в константы.",
                 statement, List.of(statement),
                 null,
-                new Fix("extract-constant", "Вынести число в именованную константу", null, false),
+                new Fix("extract-constant", "Вынести число в именованную константу", preview, true),
                 "Граница получает имя и правится в одном месте"));
     }
 

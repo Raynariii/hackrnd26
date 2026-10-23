@@ -61,7 +61,7 @@ public final class LinkedListGetInLoopRule implements Rule {
                         + "; обход через for-each/Iterator — " + after + ".",
                 call, List.of(call),
                 new Complexity(current.toString(), after.toString()),
-                new Fix("iterator", "Заменить обращение по индексу на обход Iterator/for-each", preview, false),
+                new Fix("iterator", "Заменить обращение по индексу на обход Iterator/for-each", preview, true),
                 "Убирает проход по списку на каждой итерации: " + current + " → " + after);
     }
 }
