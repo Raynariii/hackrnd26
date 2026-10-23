@@ -220,6 +220,27 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/RunResult' }
 
+  /internal/run-batch:
+    servers:
+      - url: http://runner:8090
+    post:
+      tags: [runner-internal]
+      summary: Компиляция один раз и запуск на нескольких stdin-входах (для verify и бенчмарка)
+      description: |
+        Нужен, чтобы verify не платил за javac на каждый вход. Порядок results совпадает с порядком inputs.
+        Если компиляция не прошла — results пустой.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RunnerBatchRequest' }
+      responses:
+        '200':
+          description: Результаты
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunBatchResult' }
+
 components:
   parameters:
     ProjectId:
@@ -436,6 +457,36 @@ components:
         stdin: { type: string, default: '' }
         timeoutMs: { type: integer, default: 10000 }
 
+    RunnerBatchRequest:
+      type: object
+      required: [files, inputs]
+      properties:
+        files:
+          type: array
+          items: { $ref: '#/components/schemas/SourceFile' }
+        mainClass: { type: [string, 'null'] }
+        inputs:
+          type: array
+          items: { type: string }
+        timeoutMs: { type: integer, default: 10000, description: 'Таймаут на один запуск' }
+
+    RunBatchResult:
+      type: object
+      required: [compile, results]
+      properties:
+        compile:
+          type: object
+          required: [ok]
+          properties:
+            ok: { type: boolean }
+            problems:
+              type: array
+              items: { $ref: '#/components/schemas/Problem' }
+            output: { type: string }
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/RunResult' }
+
     RunResult:
       type: object
       required: [compile, timedOut]
@@ -464,6 +515,15 @@ components:
           description: 'stdin-входы; если пусто — берутся сохранённые и сгенерированные'
         fuzz: { type: boolean, default: true }
         benchmark: { type: boolean, default: false }
+        benchmarkInputs:
+          type: array
+          description: 'Входы растущего размера для бенчмарка; если пусто — corpus/<пример>/inputs/bench-*.txt или генерация'
+          items:
+            type: object
+            required: [n, stdin]
+            properties:
+              n: { type: integer }
+              stdin: { type: string }
 
     VerifyCase:
       type: object
@@ -475,6 +535,11 @@ components:
         actual: { $ref: '#/components/schemas/RunResult' }
         ok: { type: boolean }
         mismatch: { type: [string, 'null'], description: 'Что именно разошлось: stdout / stderr / exitCode' }
+      description: |
+        Сравнение после нормализации, иначе будут ложные расхождения: identity-хеши в Object.toString
+        (`@[0-9a-f]+` → `@HASH`), перевод строк `\r\n` → `\n`, пути временных папок песочницы в stderr.
+        stderr сравнивается по первой строке исключения (тип + сообщение), не по стектрейсу целиком
+        (номера строк меняются после рефакторинга).
 
     VerifyReport:
       type: object

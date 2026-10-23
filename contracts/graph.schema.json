@@ -51,7 +51,7 @@
       "required": ["id", "kind", "label"],
       "additionalProperties": false,
       "properties": {
-        "id": { "type": "string", "description": "Стабильный в пределах версии проекта id узла графа" },
+        "id": { "type": "string", "description": "Id узла, стабилен в пределах версии проекта. Соглашение (на нём держатся ссылки из Finding.nodeIds): узел, построенный из AST-узла, имеет id = 'g' + astId; синтетические узлы блок-схемы — id метода + ':start' / ':end'. После любого изменения проекта id пересчитываются — клиент перечитывает граф." },
         "astId": { "type": ["string", "null"], "description": "id AST-узла, на который ссылается граф; null для синтетических start/end" },
         "kind": { "$ref": "#/$defs/nodeKind" },
         "label": { "type": "string", "description": "Короткая подпись: «Условие», «Цикл (for each)», имя метода" },
