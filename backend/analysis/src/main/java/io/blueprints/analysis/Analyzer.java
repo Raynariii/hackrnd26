@@ -14,6 +14,7 @@ import io.blueprints.analysis.rules.StringConcatInLoopRule;
 import io.blueprints.core.model.ProjectModel;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -60,6 +61,8 @@ public final class Analyzer {
         for (Rule rule : rules) {
             findings.addAll(rule.check(model));
         }
+        // Панель «Проблемы» показывает сначала критичное и сверху вниз по коду.
+        findings.sort(Comparator.comparing(Finding::severity).thenComparingInt(Finding::startLine));
         return new AnalysisReport(findings, metrics(model));
     }
 

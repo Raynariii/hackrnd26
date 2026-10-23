@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -85,8 +86,15 @@ class MonolithDiagnosticsTest {
     }
 
     @Test
-    void reportsCyclomaticComplexityOfDeepMethod() throws Exception {
+    void listsHighSeverityFirstAndTopDown() throws Exception {
         AnalysisReport report = analyzeFixture();
+
+        assertThat(report.findings()).extracting(Finding::severity)
+                .isSortedAccordingTo(Comparator.naturalOrder());
+    }
+
+    @Test
+    void reportsCyclomaticComplexityOfDeepMethod() throws Exception {        AnalysisReport report = analyzeFixture();
         MethodMetrics classify = report.metrics().stream()
                 .filter(metrics -> metrics.name().equals("classify"))
                 .findFirst()
