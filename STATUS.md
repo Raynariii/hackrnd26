@@ -43,8 +43,13 @@
       константа вместо «магического» числа, for-each вместо `LinkedList.get(i)`; каждая правка проверяется javac в тесте,
       отказ от небезопасных случаев (переменная объявлена в цикле, коллекция меняется, строку читают в цикле)
 - [ ] `POST /fixes/{id}` в api: подключить `FixEngine.apply(files, findingId)` — запрос роли 4 (см. «Запросы»)
-- [ ] декомпозиция монолита + `POST /decompose` — v1: перенос только static-методов и static-вложенных классов (G7)
+- [x] декомпозиция монолита: `Decomposer` предлагает разбиение на `Parser / Analyzer / Optimizer / Main` по именам
+      методов и вызовам, с полями, которые нужно перенести (v1 — только предложение, без перемещения кода)
+- [ ] `POST /decompose` в api (apply=false → предложение) — запрос роли 4 (см. «Запросы»)
 - [ ] LLM-помощник (опц.)
+**Известное ограничение:** LexicalPreservingPrinter не выравнивает отступы у вставленных операторов
+(`var _index = new java.util.HashSet<>(...)` печатается на уровень выше) — код валиден и компилируется,
+это косметика на полировку.
 **Блокеры:** —
 
 ## Роль 3 — фронтенд
@@ -78,6 +83,7 @@
 | Кто просит | Что | Кому | Статус |
 |---|---|---|---|
 | Роль 2 | `POST /api/projects/{id}/fixes/{findingId}`: вызвать `io.blueprints.analysis.FixEngine#apply(files, findingId)`, закоммитить новую версию и вернуть `ChangeResult` (state + diff); `FixNotApplicableException` → 409/422 с текстом причины. Контракт и контроллер — зона роли 4. | Роль 4 | Открыт |
+| Роль 2 | `POST /api/projects/{id}/decompose`: `new Decomposer().propose(session.model())` → `DecomposeResult.proposal` (apply=false, v1); при apply=true пока 501 `not_implemented`. | Роль 4 | Открыт |
 
 ## Журнал интеграций
 | Когда | Результат | Что сломалось |
