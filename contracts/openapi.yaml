@@ -1,0 +1,499 @@
+openapi: 3.1.0
+info:
+  title: Java Blueprints API
+  version: 0.1.0
+  description: |
+    REST API веб-инструмента «Java ↔ граф». Владелец контракта — роль 4.
+    Изменения — только через PR владельца; остальные предлагают их в STATUS.md.
+    Схема графа — в graph.schema.json (владелец — роль 1).
+servers:
+  - url: /api
+tags:
+  - name: projects
+  - name: graph
+  - name: analysis
+  - name: execution
+  - name: runner-internal
+    description: Внутренний API сервиса-песочницы (не проксируется наружу)
+
+paths:
+  /projects:
+    post:
+      tags: [projects]
+      summary: Загрузить Java-файлы и создать проект
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateProjectRequest' }
+      responses:
+        '201':
+          description: Проект создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectState' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /projects/{projectId}:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    get:
+      tags: [projects]
+      summary: Текущее состояние проекта (файлы + версия)
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectState' }
+          description: OK
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /projects/{projectId}/source:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    put:
+      tags: [projects]
+      summary: Правка кода в редакторе → перепарсинг → новый граф
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateSourceRequest' }
+      responses:
+        '200':
+          description: Новое состояние
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectState' }
+        '409': { $ref: '#/components/responses/VersionConflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /projects/{projectId}/graph:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    get:
+      tags: [graph]
+      summary: Граф проекта (обзор или блок-схема метода)
+      parameters:
+        - name: level
+          in: query
+          schema: { enum: [overview, method], default: overview }
+        - name: method
+          in: query
+          description: id узла метода из overview-графа; обязателен при level=method
+          schema: { type: string }
+      responses:
+        '200':
+          description: Граф
+          content:
+            application/json:
+              schema: { $ref: './graph.schema.json' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /projects/{projectId}/graph/ops:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    post:
+      tags: [graph]
+      summary: Операция над графом → изменение AST → новый код и граф
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GraphOpRequest' }
+      responses:
+        '200':
+          description: Новое состояние
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProjectState' }
+        '409': { $ref: '#/components/responses/VersionConflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /projects/{projectId}/diagnostics:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    get:
+      tags: [analysis]
+      summary: Находки анализатора и метрики
+      responses:
+        '200':
+          description: Диагностика
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Diagnostics' }
+
+  /projects/{projectId}/fixes/{findingId}:
+    parameters:
+      - { $ref: '#/components/parameters/ProjectId' }
+      - name: findingId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [analysis]
+      summary: Применить исправление находки
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VersionedRequest' }
+      responses:
+        '200':
+          description: Исправление применено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChangeResult' }
+        '409': { $ref: '#/components/responses/VersionConflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /projects/{projectId}/decompose:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    post:
+      tags: [analysis]
+      summary: Предложить (apply=false) или применить (apply=true) разбиение монолита
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DecomposeRequest' }
+      responses:
+        '200':
+          description: Предложение и, при apply=true, новое состояние
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DecomposeResult' }
+
+  /projects/{projectId}/run:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    post:
+      tags: [execution]
+      summary: Скомпилировать и запустить текущую версию
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RunProjectRequest' }
+      responses:
+        '200':
+          description: Результат запуска
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunResult' }
+
+  /projects/{projectId}/verify:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    post:
+      tags: [execution]
+      summary: Дифф-тесты исходная версия vs текущая (+ бенчмарк)
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VerifyRequest' }
+      responses:
+        '200':
+          description: Отчёт о проверке поведения
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VerifyReport' }
+
+  /projects/{projectId}/export:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    get:
+      tags: [execution]
+      summary: Zip с текущими Java-файлами и сгенерированными JUnit-тестами
+      responses:
+        '200':
+          description: Архив
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+
+  /internal/run:
+    servers:
+      - url: http://runner:8090
+    post:
+      tags: [runner-internal]
+      summary: Компиляция и запуск набора файлов в песочнице
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RunnerRequest' }
+      responses:
+        '200':
+          description: Результат
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunResult' }
+
+components:
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema: { type: string }
+
+  responses:
+    NotFound:
+      description: Не найдено
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    VersionConflict:
+      description: Версия проекта устарела — нужно перечитать состояние
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unprocessable:
+      description: Код не разбирается / операция невозможна
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error: { type: string, description: 'Машинный код: not_found, version_conflict, parse_error, unsupported_op, not_implemented' }
+        message: { type: string }
+        problems:
+          type: array
+          items: { $ref: '#/components/schemas/Problem' }
+
+    Problem:
+      type: object
+      required: [message]
+      properties:
+        file: { type: [string, 'null'] }
+        line: { type: [integer, 'null'] }
+        column: { type: [integer, 'null'] }
+        message: { type: string }
+
+    SourceFile:
+      type: object
+      required: [path, content]
+      properties:
+        path: { type: string, example: Main.java }
+        content: { type: string }
+
+    CreateProjectRequest:
+      type: object
+      required: [files]
+      properties:
+        name: { type: string }
+        files:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/SourceFile' }
+
+    VersionedRequest:
+      type: object
+      required: [version]
+      properties:
+        version: { type: integer, description: 'Версия, на которой основано изменение (оптимистичная блокировка)' }
+
+    UpdateSourceRequest:
+      allOf:
+        - { $ref: '#/components/schemas/VersionedRequest' }
+        - type: object
+          required: [files]
+          properties:
+            files:
+              type: array
+              items: { $ref: '#/components/schemas/SourceFile' }
+
+    ProjectState:
+      type: object
+      required: [id, version, files]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        version: { type: integer, description: 'Растёт на каждое изменение; версия 1 — исходный монолит (эталон для verify)' }
+        files:
+          type: array
+          items: { $ref: '#/components/schemas/SourceFile' }
+        parseProblems:
+          type: array
+          items: { $ref: '#/components/schemas/Problem' }
+
+    GraphOpRequest:
+      allOf:
+        - { $ref: '#/components/schemas/VersionedRequest' }
+        - type: object
+          required: [op]
+          properties:
+            op:
+              enum: [editNode, insertAfter, delete, move, wrapIf, wrapLoop, extractMethod]
+            nodeId: { type: string, description: 'Целевой узел' }
+            nodeIds:
+              type: array
+              items: { type: string }
+              description: 'Для extractMethod — выделенные узлы'
+            code: { type: string, description: 'Новый код узла / вставляемый оператор / условие обёртки' }
+            kind: { $ref: './graph.schema.json#/$defs/nodeKind' }
+            targetId: { type: string, description: 'Для move — после какого узла поставить' }
+            name: { type: string, description: 'Для extractMethod — имя нового метода' }
+
+    Severity:
+      enum: [high, medium, low]
+
+    Finding:
+      type: object
+      required: [id, rule, severity, title, explanation, file, startLine, endLine]
+      properties:
+        id: { type: string }
+        rule: { type: string, example: nested-loop-same-collection }
+        severity: { $ref: '#/components/schemas/Severity' }
+        title: { type: string, example: Вложенность O(n²) }
+        explanation: { type: string }
+        file: { type: string }
+        startLine: { type: integer }
+        endLine: { type: integer }
+        nodeIds:
+          type: array
+          items: { type: string }
+        complexity:
+          type: [object, 'null']
+          properties:
+            current: { type: string, example: O(n²) }
+            after: { type: [string, 'null'], example: O(n) }
+        fix:
+          type: [object, 'null']
+          properties:
+            kind: { type: string, example: index-by-key }
+            description: { type: string }
+            preview: { type: [string, 'null'], description: 'Код после исправления (фрагмент)' }
+            autoApplicable: { type: boolean }
+        expectedEffect: { type: [string, 'null'], example: 'до 5x быстрее при n=10⁴' }
+
+    MethodMetrics:
+      type: object
+      required: [methodId, name, file, lines]
+      properties:
+        methodId: { type: string }
+        name: { type: string }
+        file: { type: string }
+        lines: { type: integer }
+        cyclomatic: { type: integer }
+        maxNesting: { type: integer }
+        complexity: { type: [string, 'null'], example: O(n²) }
+
+    Diagnostics:
+      type: object
+      required: [version, findings, metrics]
+      properties:
+        version: { type: integer }
+        findings:
+          type: array
+          items: { $ref: '#/components/schemas/Finding' }
+        metrics:
+          type: array
+          items: { $ref: '#/components/schemas/MethodMetrics' }
+
+    ChangeResult:
+      type: object
+      required: [state, diff]
+      properties:
+        state: { $ref: '#/components/schemas/ProjectState' }
+        diff: { type: string, description: 'Unified diff относительно предыдущей версии' }
+
+    DecomposeRequest:
+      allOf:
+        - { $ref: '#/components/schemas/VersionedRequest' }
+        - type: object
+          required: [apply]
+          properties:
+            apply: { type: boolean }
+
+    DecomposeResult:
+      type: object
+      required: [proposal]
+      properties:
+        proposal:
+          type: array
+          items:
+            type: object
+            required: [className, members]
+            properties:
+              className: { type: string, example: Parser }
+              responsibility: { type: string }
+              members:
+                type: array
+                items: { type: string, description: 'Сигнатура метода или имя поля' }
+        result: { oneOf: [{ $ref: '#/components/schemas/ChangeResult' }, { type: 'null' }] }
+
+    RunProjectRequest:
+      type: object
+      properties:
+        stdin: { type: string, default: '' }
+        version: { type: [integer, 'null'], description: 'Какую версию запускать; по умолчанию текущую' }
+        timeoutMs: { type: integer, default: 10000, maximum: 60000 }
+
+    RunnerRequest:
+      type: object
+      required: [files]
+      properties:
+        files:
+          type: array
+          items: { $ref: '#/components/schemas/SourceFile' }
+        mainClass: { type: [string, 'null'], description: 'FQN; если не задан — ищется класс с main' }
+        stdin: { type: string, default: '' }
+        timeoutMs: { type: integer, default: 10000 }
+
+    RunResult:
+      type: object
+      required: [compile, timedOut]
+      properties:
+        compile:
+          type: object
+          required: [ok]
+          properties:
+            ok: { type: boolean }
+            problems:
+              type: array
+              items: { $ref: '#/components/schemas/Problem' }
+            output: { type: string }
+        stdout: { type: string }
+        stderr: { type: string }
+        exitCode: { type: [integer, 'null'] }
+        timeMs: { type: integer }
+        timedOut: { type: boolean }
+
+    VerifyRequest:
+      type: object
+      properties:
+        inputs:
+          type: array
+          items: { type: string }
+          description: 'stdin-входы; если пусто — берутся сохранённые и сгенерированные'
+        fuzz: { type: boolean, default: true }
+        benchmark: { type: boolean, default: false }
+
+    VerifyCase:
+      type: object
+      required: [name, ok]
+      properties:
+        name: { type: string }
+        input: { type: string }
+        expected: { $ref: '#/components/schemas/RunResult' }
+        actual: { $ref: '#/components/schemas/RunResult' }
+        ok: { type: boolean }
+        mismatch: { type: [string, 'null'], description: 'Что именно разошлось: stdout / stderr / exitCode' }
+
+    VerifyReport:
+      type: object
+      required: [behaviorPreserved, passed, total, cases]
+      properties:
+        baselineVersion: { type: integer }
+        currentVersion: { type: integer }
+        compiled: { type: boolean }
+        behaviorPreserved: { type: boolean }
+        passed: { type: integer }
+        total: { type: integer }
+        cases:
+          type: array
+          items: { $ref: '#/components/schemas/VerifyCase' }
+        benchmark:
+          type: array
+          items:
+            type: object
+            properties:
+              n: { type: integer }
+              baselineMs: { type: number }
+              currentMs: { type: number }

@@ -1,0 +1,45 @@
+# Запуск всего решения: docker compose up --build → http://localhost:3000
+services:
+  web:
+    build: ./frontend
+    ports:
+      - "${WEB_PORT:-3000}:80"
+    depends_on:
+      - api
+
+  api:
+    build:
+      context: ./backend
+      target: api
+    environment:
+      RUNNER_URL: http://runner:8090
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    networks:
+      - default
+      - sandbox
+    depends_on:
+      - runner
+
+  # Песочница для пользовательского кода: нет выхода в сеть, read-only FS, лимиты памяти/процессов.
+  runner:
+    build:
+      context: ./backend
+      target: runner
+    networks:
+      - sandbox
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,exec
+    mem_limit: 1g
+    pids_limit: 256
+    cpus: 2
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  sandbox:
+    internal: true

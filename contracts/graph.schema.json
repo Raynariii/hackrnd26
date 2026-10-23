@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Raynariii/hackrnd26/contracts/graph.schema.json",
+  "title": "Graph",
+  "description": "Проекция AST в граф. Владелец контракта — роль 1 (ядро). Источник истины — AST; граф только его отображает.",
+  "type": "object",
+  "required": ["level", "nodes", "edges"],
+  "additionalProperties": false,
+  "properties": {
+    "level": {
+      "description": "overview — классы/методы/поля/вызовы; method — блок-схема тела одного метода",
+      "enum": ["overview", "method"]
+    },
+    "scope": {
+      "description": "Для level=method — id узла метода (kind=method) из overview-графа; для overview — null",
+      "type": ["string", "null"]
+    },
+    "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+    "edges": { "type": "array", "items": { "$ref": "#/$defs/edge" } }
+  },
+  "$defs": {
+    "nodeKind": {
+      "enum": [
+        "class", "interface", "enum", "record", "method", "constructor", "field",
+        "start", "end",
+        "variable", "condition", "loop", "call", "operation", "return",
+        "switch", "case", "break", "continue",
+        "try", "catch", "finally", "throw",
+        "raw"
+      ],
+      "description": "raw — конструкция, которую граф пока не раскладывает: показывается как блок «код как есть», но не теряется"
+    },
+    "edgeKind": {
+      "enum": ["next", "true", "false", "loopBody", "loopBack", "loopExit", "case", "break", "continue", "exception", "finally", "call", "contains"],
+      "description": "contains — вложенность в overview (класс → метод); call — вызов метода; остальное — поток управления"
+    },
+    "sourceRange": {
+      "type": "object",
+      "required": ["file", "startLine", "endLine"],
+      "additionalProperties": false,
+      "properties": {
+        "file": { "type": "string", "description": "Путь файла внутри проекта, например Main.java" },
+        "startLine": { "type": "integer", "minimum": 1 },
+        "endLine": { "type": "integer", "minimum": 1 },
+        "startColumn": { "type": ["integer", "null"], "minimum": 1 },
+        "endColumn": { "type": ["integer", "null"], "minimum": 1 }
+      }
+    },
+    "node": {
+      "type": "object",
+      "required": ["id", "kind", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "description": "Стабильный в пределах версии проекта id узла графа" },
+        "astId": { "type": ["string", "null"], "description": "id AST-узла, на который ссылается граф; null для синтетических start/end" },
+        "kind": { "$ref": "#/$defs/nodeKind" },
+        "label": { "type": "string", "description": "Короткая подпись: «Условие», «Цикл (for each)», имя метода" },
+        "code": { "type": ["string", "null"], "description": "Фрагмент кода узла: условие, выражение, сигнатура" },
+        "range": { "oneOf": [{ "$ref": "#/$defs/sourceRange" }, { "type": "null" }] },
+        "parent": { "type": ["string", "null"], "description": "id узла-контейнера (цикл, try, метод, класс) — для сворачивания групп" },
+        "findings": { "type": "array", "items": { "type": "string" }, "description": "id находок анализатора, привязанных к узлу" },
+        "meta": { "type": "object", "description": "Произвольные доп. данные (модификаторы, тип, сложность)" }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["id", "from", "to", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "from": { "type": "string" },
+        "to": { "type": "string" },
+        "kind": { "$ref": "#/$defs/edgeKind" },
+        "label": { "type": ["string", "null"], "description": "Подпись: «Да», «Нет», case-значение, тип исключения" }
+      }
+    }
+  }
+}
