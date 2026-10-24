@@ -127,6 +127,12 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
       `baseline_compile_error`. `benchmark=true` → `benchmarkInputs` или `bench-<n>.txt` из корпуса, время до/после.
       Сквозная проверка (api + runner, `00-hello`): эквивалентная правка — 8/8 ✓ за ~2,7 с; изменённая логика и
       исключение — точный дифф. В compose корпус монтируется в api (`./corpus:/corpus:ro`)
+- [x] `POST /fixes/{findingId}` (запрос роли 2, PR — `feat/api-fixes-decompose`): `FixEngine.apply` → **quality gate**
+      (`QualityGate`: новая версия vs текущая через verify — компиляция + дифф-тесты) → коммит новой версии.
+      Ответ `ChangeResult` = state + unified diff + `description` + `verify` (отчёт gate). Ошибки 422:
+      `fix_not_applicable`, `quality_gate_failed` (сессия не меняется), `parse_error`; 409 — устаревшая версия.
+      Сквозная проверка на `OrdersMonolith`: StringBuilder, for-each по LinkedList, константы — 3 исправления подряд, gate 6/6
+- [x] `POST /decompose` (запрос роли 2): `Decomposer.propose` → `proposal` + `notes`; `apply=true` → 501 (G7)
 - [ ] bench-входы `corpus/*/inputs/bench-*.txt` растущего размера (G4)
 - [ ] монолиты организаторов → `corpus/` (G8, как только лид их получит)
 - [ ] `docs/scope.md`: матрица «конструкция → граф / генерация / тест» по разделам 1–4 + бонус (G9)
@@ -147,8 +153,10 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 
 | Кто просит | Что | Кому | Статус |
 |---|---|---|---|
-| Роль 2 | `POST /api/projects/{id}/fixes/{findingId}`: вызвать `io.blueprints.analysis.FixEngine#apply(files, findingId)`, закоммитить новую версию и вернуть `ChangeResult` (state + diff); `FixNotApplicableException` → 409/422 с текстом причины. Контракт и контроллер — зона роли 4. | Роль 4 | Открыт |
-| Роль 2 | `POST /api/projects/{id}/decompose`: `new Decomposer().propose(session.model())` → `DecomposeResult.proposal` (apply=false, v1); при apply=true пока 501 `not_implemented`. | Роль 4 | Открыт |
+| Роль 2 | `POST /api/projects/{id}/fixes/{findingId}`: вызвать `io.blueprints.analysis.FixEngine#apply(files, findingId)`, закоммитить новую версию и вернуть `ChangeResult` (state + diff); `FixNotApplicableException` → 409/422 с текстом причины. Контракт и контроллер — зона роли 4. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
+| Роль 4 | В `GET /diagnostics` у `collection-lookup-in-loop` стоит `fix.autoApplicable=true`, но `FixEngine.apply` отказывает (коллекция меняется в цикле — `00-hello`, `OrdersMonolith`). Кнопка «Применить» в UI обещает то, чего нет: выставлять `autoApplicable` по тем же проверкам, что и `apply`. | Роль 2 | Открыт |
+| Роль 2 | `POST /api/projects/{id}/decompose`: `new Decomposer().propose(session.model())` → `DecomposeResult.proposal` (apply=false, v1); при apply=true пока 501 `not_implemented`. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
+| Роль 4 | В `GET /diagnostics` у `collection-lookup-in-loop` стоит `fix.autoApplicable=true`, но `FixEngine.apply` отказывает (коллекция меняется в цикле — `00-hello`, `OrdersMonolith`). Кнопка «Применить» в UI обещает то, чего нет: выставлять `autoApplicable` по тем же проверкам, что и `apply`. | Роль 2 | Открыт |
 
 ## Журнал интеграций
 | Когда | Результат | Что сломалось |
