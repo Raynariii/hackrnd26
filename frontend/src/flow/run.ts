@@ -1,5 +1,5 @@
-import type { RunResult } from '../api/types';
-import type { RunStreamEvent } from '../api/pending';
+import type { RunResult, RunStreamEvent } from '../api/types';
+
 
 /** Начало потокового запуска: компиляция ещё не ответила, вывода нет; timeMs появится с событием exit. */
 export const STREAM_START: RunResult = { compile: { ok: true }, stdout: '', stderr: '', timedOut: false };

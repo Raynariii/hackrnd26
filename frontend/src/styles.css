@@ -448,6 +448,9 @@ button.status-item:hover:not(:disabled) { background: var(--pressed); color: var
 .diff-add { display: block; background: color-mix(in srgb, var(--ok) 14%, transparent); }
 .diff-del { display: block; background: color-mix(in srgb, var(--err) 14%, transparent); }
 .diff-hunk { display: block; color: var(--text-3); }
+.diff-line { display: block; min-height: 1.4em; }
+.diff-file { display: block; font-weight: 600; color: var(--text); padding: 6px 0 2px; border-top: 1px solid var(--divider); margin-top: 4px; }
+.diff-file:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
 
 .finding {
   display: block; width: 100%; text-align: left; cursor: pointer; margin-bottom: 8px;
