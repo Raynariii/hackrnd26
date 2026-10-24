@@ -56,6 +56,11 @@ const FRAME_TITLES = new Map<NodeKind, string>([
   ['switch', 'Блок switch'],
   ['case', 'Ветка case'],
   ['condition', 'Ветки условия'],
+  // обзор: тип — рамка, его члены внутри
+  ['class', 'Класс'],
+  ['interface', 'Интерфейс'],
+  ['enum', 'Enum'],
+  ['record', 'Record'],
 ]);
 
 export function frameTitle(node: GraphNode): string {
@@ -110,6 +115,8 @@ export interface FlowEdge {
   sourceHandle: string;
   targetHandle: string;
   tone: EdgeTone;
+  /** Участвует в раскладке elkjs. Нет — обратные рёбра и вызовы на обзоре (рисуются поверх раскладки). */
+  inLayout: boolean;
 }
 
 export interface FlowModel {
@@ -118,11 +125,18 @@ export interface FlowModel {
   edges: FlowEdge[];
   /** id элемента → id рамки-родителя (null — корень). */
   parentOf: Map<string, string | null>;
+  /** Плотная упаковка (обзор): члены типа — сеткой внутри рамки, а не слоями по рёбрам. */
+  packed: boolean;
 }
 
 export interface BuildOptions {
-  /** Строить рамки по полю parent. Для обзора выключено: там вложенность уже показана рёбрами contains. */
+  /** Строить рамки по полю parent (цикл, try, ветки условия; на обзоре — тип с его членами). */
   grouping: boolean;
+  /**
+   * Обзор: рамки типов упаковываются сеткой, рёбра contains не рисуются (вложенность видна по рамкам),
+   * вызовы рисуются поверх раскладки. Иначе 40 членов класса ложатся в один слой — плоская лента.
+   */
+  packed?: boolean;
 }
 
 export function buildFlowModel(graph: Graph, options: BuildOptions): FlowModel {
@@ -189,8 +203,10 @@ export function buildFlowModel(graph: Graph, options: BuildOptions): FlowModel {
     return e.from !== e.to && containers.has(e.to) && chainOf(e.from).includes(e.to);
   };
 
+  const packed = Boolean(options.packed);
   const edges: FlowEdge[] = graph.edges
     .filter((e) => byId.has(e.from) && byId.has(e.to))
+    .filter((e) => !(packed && e.kind === 'contains'))
     .map((e) => {
       const back = isBack(e);
       const source = byId.get(e.from)!;
@@ -209,10 +225,11 @@ export function buildFlowModel(graph: Graph, options: BuildOptions): FlowModel {
         sourceHandle,
         targetHandle: back ? HANDLE.backIn : HANDLE.in,
         tone: edgeTone(e.kind, back),
+        inLayout: !back && !(packed && e.kind === 'call'),
       };
     });
 
-  return { items: [...frames.map((f) => f.frame), ...blocks], edges, parentOf };
+  return { items: [...frames.map((f) => f.frame), ...blocks], edges, parentOf, packed };
 }
 
 function edgeTone(kind: EdgeKind, back: boolean): EdgeTone {
@@ -258,22 +275,50 @@ const FRAME_OPTIONS: Record<string, string> = {
   'elk.padding': `[top=${FRAME_PADDING.top},left=${FRAME_PADDING.left},bottom=${FRAME_PADDING.bottom},right=${FRAME_PADDING.right}]`,
 };
 
+/** Обзор: прямоугольная упаковка в порядке кода, пропорции под экран 16:10. */
+const PACKED_ROOT_OPTIONS: Record<string, string> = {
+  'elk.algorithm': 'rectpacking',
+  'elk.aspectRatio': '1.6',
+  'elk.spacing.nodeNode': '24',
+  'elk.padding': '[top=12,left=12,bottom=12,right=12]',
+};
+
+const PACKED_FRAME_OPTIONS: Record<string, string> = {
+  ...FRAME_OPTIONS,
+  'elk.algorithm': 'rectpacking',
+  'elk.aspectRatio': '1.6',
+  'elk.spacing.nodeNode': '16',
+};
+
 /** Иерархический граф для elkjs: рамки — составные узлы, ребро кладётся в общий контейнер концов. */
 export function toElkGraph(model: FlowModel): ElkNodeLike {
-  const root: ElkNodeLike = { id: 'root', layoutOptions: ROOT_OPTIONS, children: [], edges: [] };
+  const rootOptions = model.packed ? PACKED_ROOT_OPTIONS : ROOT_OPTIONS;
+  const frameOptions = model.packed ? PACKED_FRAME_OPTIONS : FRAME_OPTIONS;
+  const root: ElkNodeLike = { id: 'root', layoutOptions: rootOptions, children: [], edges: [] };
   const elkById = new Map<string, ElkNodeLike>([['root', root]]);
 
   for (const item of model.items) {
     const elkNode: ElkNodeLike =
       item.type === 'frame'
-        ? { id: item.id, layoutOptions: FRAME_OPTIONS, children: [], edges: [] }
+        ? { id: item.id, layoutOptions: frameOptions, children: [], edges: [] }
         : { id: item.id, width: item.size.width, height: item.size.height };
     elkById.set(item.id, elkNode);
     elkById.get(item.parent ?? 'root')!.children!.push(elkNode);
   }
 
+  if (model.packed) {
+    // Упаковка идёт в порядке детей: заголовок типа — первым, дальше члены и вложенные типы как в коде.
+    // (В model.items рамки стоят раньше блоков — так нужно React Flow, но не раскладке.)
+    const order = new Map<string, number>();
+    for (const item of model.items) {
+      const isHeader = item.type === 'block' && item.parent === frameId(item.id);
+      order.set(item.id, isHeader ? -1 : item.node.range?.startLine ?? Number.MAX_SAFE_INTEGER);
+    }
+    for (const n of elkById.values()) n.children?.sort((a, b) => order.get(a.id)! - order.get(b.id)!);
+  }
+
   for (const fe of model.edges) {
-    if (fe.back) continue;
+    if (!fe.inLayout) continue;
     const container = commonContainer(model.parentOf, fe.edge.from, fe.edge.to);
     elkById.get(container)!.edges!.push({ id: fe.edge.id, sources: [fe.edge.from], targets: [fe.edge.to] });
   }

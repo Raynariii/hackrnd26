@@ -1,10 +1,14 @@
 // Настоящие графы и находки, снятые с ядра (MethodFlowBuilder, PR #5) и анализатора роли 2 на примерах:
 //   flow   — Flow.java: if/else-if, switch без default, while(true)+break/continue, try/catch/finally, метки;
-//   orders — OrdersMonolith.java из тестов анализа: циклы, находки O(n²), пустой catch.
+//   orders — OrdersMonolith.java из тестов анализа: циклы, находки O(n²), пустой catch;
+//   scope  — ScopeSample.java из тестов ядра (пример интеграции №1: 40 узлов обзора, 16 рёбер call). Снят
+//            javaparser 3.17, поэтому record/sealed/switch-выражение/pattern instanceof переписаны на
+//            эквивалентный Java 11 — структура обзора (вложенные типы, члены, вызовы) та же.
 // Открываются в режиме моков: npm run dev:mock → http://localhost:5173/?demo=flow (или ?demo=orders).
 import type { Diagnostics, Graph } from '../api/types';
 import flow from './real/Flow.json';
 import orders from './real/OrdersMonolith.json';
+import scope from './real/ScopeSample.json';
 import mainOps from './real/MainOps.json';
 import ordersFixes from './real/OrdersFixes.json';
 
@@ -57,6 +61,7 @@ export const opsDemo = mainOps as unknown as OpsDemo;
 export const realDemos: Record<string, RealDemo> = {
   flow: flow as unknown as RealDemo,
   orders: orders as unknown as RealDemo,
+  scope: scope as unknown as RealDemo,
 };
 
 /**

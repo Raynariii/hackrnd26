@@ -89,6 +89,19 @@ export function GraphCanvas({ graph, selectedIds, onSelect, onOpenMethod, focus,
     );
   }, [selectedKey, rev, setNodes]);
 
+  // Вызовы на обзоре: рёбра выделенных методов — яркие и поверх, остальные приглушены.
+  useEffect(() => {
+    setEdges((es) =>
+      es.map((e) => {
+        const data = e.data as { floating?: boolean } | undefined;
+        if (!data?.floating) return e;
+        const hot = selected.has(e.source) || selected.has(e.target);
+        const opacity = hot ? 1 : selected.size ? 0.12 : 0.35;
+        return e.style?.opacity === opacity ? e : { ...e, zIndex: hot ? 5 : 1, animated: hot, style: { ...e.style, opacity } };
+      }),
+    );
+  }, [selectedKey, rev, setEdges]);
+
   // Маркеры находок: диагностика приходит отдельным запросом, раскладку из-за неё не пересчитываем.
   useEffect(() => {
     setNodes((nds) =>

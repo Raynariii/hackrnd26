@@ -20,7 +20,9 @@ const EDGE_COLORS: Record<EdgeTone, string> = {
  * тело цикла, try/catch, switch. Обратные рёбра (возврат к циклу) в раскладке не участвуют и рисуются сбоку.
  */
 export async function layoutGraph(graph: Graph): Promise<{ nodes: Node[]; edges: Edge[] }> {
-  const model = buildFlowModel(graph, { grouping: graph.level === 'method' });
+  const overview = graph.level === 'overview';
+  // Обзор: типы — рамки с членами, упакованные сеткой; вызовы — поверх раскладки (иначе плоская лента).
+  const model = buildFlowModel(graph, { grouping: true, packed: overview });
   const layout = (await elk.layout(toElkGraph(model) as unknown as Parameters<typeof elk.layout>[0])) as unknown as ElkNodeLike;
   const boxes = collectBoxes(layout);
 
@@ -48,19 +50,23 @@ export async function layoutGraph(graph: Graph): Promise<{ nodes: Node[]; edges:
 
   const edges: Edge[] = model.edges.map((fe) => {
     const color = EDGE_COLORS[fe.tone];
+    // Вызовы на обзоре: кривые поверх сетки, приглушённые; у выделенного метода подсвечиваются (GraphCanvas).
+    const floating = !fe.inLayout && !fe.back;
     return {
       id: fe.edge.id,
       source: fe.edge.from,
       target: fe.edge.to,
       sourceHandle: fe.sourceHandle,
       targetHandle: fe.targetHandle,
-      type: 'smoothstep',
+      type: floating ? 'default' : 'smoothstep',
+      data: { tone: fe.tone, floating },
       label: fe.label ?? undefined,
       className: `edge-${fe.tone}`,
       style: {
         stroke: color,
         strokeWidth: 1.5,
         ...(fe.back || fe.tone === 'call' ? { strokeDasharray: '6 4' } : {}),
+        ...(floating ? { opacity: 0.35 } : {}),
       },
       labelStyle: { fill: color, fontWeight: 600, fontSize: 11 },
       labelBgStyle: { fill: '#0b1220' },

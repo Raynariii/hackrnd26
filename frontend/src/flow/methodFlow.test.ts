@@ -174,3 +174,30 @@ test("kind 'constructor' не цепляет Object.prototype.constructor", () =
   assert.equal(nodeShape('constructor'), 'process');
   assert.equal(frameTitle({ id: 'x', kind: 'constructor', label: 'Main()' }), 'Main()');
 });
+
+test('обзор (packed): рамки типов, без contains, вызовы вне раскладки, заголовок типа первым', () => {
+  const ov: Graph = {
+    level: 'overview',
+    nodes: [
+      { id: 'C', kind: 'class', label: 'Main', range: { file: 'M.java', startLine: 1, endLine: 30 } },
+      { id: 'I', kind: 'class', label: 'Inner', parent: 'C', range: { file: 'M.java', startLine: 2, endLine: 9 } },
+      { id: 'If', kind: 'field', label: 'x', parent: 'I', range: { file: 'M.java', startLine: 3, endLine: 3 } },
+      { id: 'm', kind: 'method', label: 'main', parent: 'C', range: { file: 'M.java', startLine: 20, endLine: 25 } },
+      { id: 'f', kind: 'field', label: 'f', parent: 'C', range: { file: 'M.java', startLine: 11, endLine: 11 } },
+    ],
+    edges: [
+      { id: 'k1', from: 'C', to: 'I', kind: 'contains' },
+      { id: 'k2', from: 'C', to: 'm', kind: 'contains' },
+      { id: 'c1', from: 'm', to: 'If', kind: 'call' },
+    ],
+  };
+  const m = buildFlowModel(ov, { grouping: true, packed: true });
+  assert.deepEqual(m.items.filter((i) => i.type === 'frame').map((i) => i.id), [frameId('C'), frameId('I')]);
+  assert.deepEqual(m.edges.map((e) => e.edge.id), ['c1']);
+  assert.equal(m.edges[0].inLayout, false);
+  const root = toElkGraph(m);
+  assert.equal(root.layoutOptions!['elk.algorithm'], 'rectpacking');
+  const outer = root.children![0];
+  assert.deepEqual(outer.children!.map((c) => c.id), ['C', frameId('I'), 'f', 'm'], 'заголовок, затем по строкам');
+  assert.ok(!JSON.stringify(root).includes('"c1"'));
+});
