@@ -7,6 +7,9 @@ interface Props {
   running: boolean;
   onRerun: () => void;
   onClose: () => void;
+  /** Скачать проект с JUnit-тестами (GET /export) — те же проверки, что можно запустить без нашего сервиса. */
+  onExport?: () => void;
+  exporting?: boolean;
 }
 
 const VERDICT = {
@@ -82,7 +85,7 @@ function CaseRow({ c }: { c: VerifyCase }) {
   );
 }
 
-export function VerifyScreen({ report, running, onRerun, onClose }: Props) {
+export function VerifyScreen({ report, running, onRerun, onClose, onExport, exporting }: Props) {
   const v = VERDICT[verdict(report)];
   const bench = report.benchmark ?? [];
   const sp = speedup(bench);
@@ -132,6 +135,11 @@ export function VerifyScreen({ report, running, onRerun, onClose }: Props) {
         </div>
         <div className="vs-actions">
           <button onClick={onRerun} disabled={running}>{running ? 'Проверяем…' : 'Перепроверить'}</button>
+          {onExport && (
+            <button onClick={onExport} disabled={exporting} title="Zip с текущим кодом и JUnit-тестами против версии 1; запуск — mvn test">
+              {exporting ? 'Готовим архив…' : '⬇ Скачать с JUnit-тестами'}
+            </button>
+          )}
           <button onClick={onClose} aria-label="Закрыть">✕</button>
         </div>
       </header>

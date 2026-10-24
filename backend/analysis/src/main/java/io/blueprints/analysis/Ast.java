@@ -1,6 +1,7 @@
 package io.blueprints.analysis;
 
 import com.github.javaparser.ast.Node;
+import com.github.javaparser.ast.comments.Comment;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.Expression;
@@ -146,7 +147,12 @@ public final class Ast {
      * именами переменных, — дубль, а разные сообщения в {@code println} — нет.
      */
     public static String normalize(Node node) {
-        String text = node.toString();
+        // Комментарии сравниваемому коду не принадлежат: их текст у копий обычно разный
+        // и сильно занижает похожесть (ловили на корпусе — копии методов «не находились»).
+        Node copy = node.clone();
+        copy.getAllContainedComments().forEach(Comment::remove);
+        copy.removeComment();
+        String text = copy.toString();
         StringBuilder out = new StringBuilder(text.length());
         int index = 0;
         while (index < text.length()) {
