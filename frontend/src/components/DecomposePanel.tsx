@@ -1,4 +1,7 @@
+import { useState } from 'react';
+import { Split } from 'lucide-react';
 import type { DecomposeResult, Graph, GraphNode } from '../api/types';
+import { AppliedBanner, type AppliedFix } from './AnalysisPanel';
 import { classNodes, memberNode, sharedMembers, type ProposedClass } from '../flow/decompose';
 
 interface Props {
@@ -12,13 +15,27 @@ interface Props {
   onPropose: () => void;
   onShowClass: (cls: ProposedClass, nodes: GraphNode[]) => void;
   onShowMember: (node: GraphNode) => void;
+  /** Применить разбиение (POST /decompose apply=true); нет — сервер не умеет, остаётся предложение. Вернуть ошибку или null. */
+  onApply?: () => Promise<string | null>;
+  applying: boolean;
+  applied: AppliedFix | null;
+  onVerify: () => void;
+  onUndo: () => void;
+  onDismissApplied: () => void;
+  verifying: boolean;
 }
 
 /** «Предложить разбиение»: новые классы, их ответственность и члены (POST /decompose, apply=false). */
-export function DecomposePanel({ result, stale, busy, overview, activeClass, onPropose, onShowClass, onShowMember }: Props) {
+export function DecomposePanel({ result, stale, busy, overview, activeClass, onPropose, onShowClass, onShowMember, onApply, applying, applied, onVerify, onUndo, onDismissApplied, verifying }: Props) {
   const shared = result ? sharedMembers(result.proposal) : new Set<string>();
+  const [error, setError] = useState<string | null>(null);
+  const apply = async () => {
+    setError(null);
+    setError(await onApply!());
+  };
   return (
     <div className="decompose">
+      {applied && <AppliedBanner applied={applied} onVerify={onVerify} onUndo={onUndo} onDismiss={onDismissApplied} verifying={verifying} />}
       <div className="decompose-head">
         <h3>Разбиение на классы</h3>
         <button disabled={busy} onClick={onPropose}>{busy ? 'Считаем…' : result ? 'Пересчитать' : 'Предложить разбиение'}</button>
@@ -51,9 +68,19 @@ export function DecomposePanel({ result, stale, busy, overview, activeClass, onP
         );
       })}
       {result?.notes?.map((n, i) => <div key={i} className="muted decompose-note">{n}</div>)}
-      {result && result.proposal.length > 0 && (
-        <div className="muted decompose-note">Применение разбиения пока не поддержано сервером — это предложение для ручного рефакторинга</div>
+      {result && result.proposal.length > 0 && onApply && (
+        <div className="decompose-apply">
+          <button className="primary" disabled={applying || stale} onClick={apply}
+            title="Сервер перенесёт static-методы и поля в новые классы и примет результат, только если тесты поведения зелёные">
+            <Split size={15} />{applying ? 'Применяем и проверяем…' : 'Применить разбиение'}
+          </button>
+          <span className="muted">Новая версия появится, только если поведение не изменилось</span>
+        </div>
       )}
+      {result && result.proposal.length > 0 && !onApply && (
+        <div className="muted decompose-note">Применение разбиения на этом сервере не поддержано — это предложение для ручного рефакторинга</div>
+      )}
+      {error && <div className="error decompose-note">{error}</div>}
     </div>
   );
 }

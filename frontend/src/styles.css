@@ -726,3 +726,31 @@ tbody tr:hover td { background: var(--island-2); }
   background: color-mix(in srgb, var(--island-2) 45%, var(--island));
 }
 .inspector-dock .hint { margin-top: 10px; }
+
+/* ===== совет ИИ на карточке, Big O выделения, применение разбиения, живая консоль ===== */
+.advice { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; cursor: default; }
+.advice .muted, .advice-title { display: inline-flex; align-items: center; gap: 6px; }
+.advice-ask { align-self: flex-start; height: 28px; font-size: 12.5px; color: var(--text-2); }
+.advice-ask svg, .advice-title svg { color: var(--accent); }
+.advice-body {
+  background: var(--island-2); border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; line-height: 1.5;
+}
+.advice-body p { margin: 0; white-space: pre-wrap; }
+.advice-title { font-weight: 600; }
+.advice-code {
+  margin: 0; padding: 8px 10px; border-radius: var(--r-sm); background: var(--island); border: 1px solid var(--border);
+  font-family: 'JetBrains Mono', monospace; font-size: 12px; overflow-x: auto; white-space: pre;
+}
+.advice-note { font-size: 11.5px; }
+.inspector-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.inspector-head h3 { margin: 0; }
+.inspector-complexity {
+  display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px;
+  background: var(--island-2); border: 1px solid var(--border); cursor: help;
+}
+.inspector-complexity code { font-weight: 600; font-size: 12px; color: var(--text); }
+.decompose-apply { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
+.decompose-apply button { align-self: flex-start; }
+.decompose-apply .muted { font-size: 12px; }
+.console-live { color: var(--text-3); }

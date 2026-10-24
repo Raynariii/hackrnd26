@@ -10,12 +10,14 @@ interface Props {
   graph: Graph;
   /** Выполнить операцию; вернуть текст ошибки для пользователя или null при успехе. */
   onOp: (req: Omit<GraphOpRequest, 'version'>) => Promise<string | null>;
+  /** Big O выделения (POST /complexity): строка, 'pending' — считаем, null — не удалось, undefined — не показываем. */
+  complexity?: string | null;
 }
 
 const CONTAINERS = ['loop', 'condition', 'try', 'switch', 'catch', 'case'];
 
 /** Выделенные узлы и правка на графе (POST /graph/ops): над одним блоком и над несколькими подряд идущими. */
-export function NodeInspector({ selection, graph, onOp }: Props) {
+export function NodeInspector({ selection, graph, onOp, complexity }: Props) {
   const node = selection.at(-1)!;
   const many = selection.length > 1;
   const ordered = inCodeOrder(selection);
@@ -84,7 +86,15 @@ export function NodeInspector({ selection, graph, onOp }: Props) {
 
   return (
     <div className="inspector">
-      <h3>{many ? `Выделено блоков: ${selection.length}` : 'Блок'}</h3>
+      <div className="inspector-head">
+        <h3>{many ? `Выделено блоков: ${selection.length}` : node.kind === 'start' ? 'Метод' : 'Блок'}</h3>
+        {complexity !== undefined && complexity !== null && (
+          <span className="inspector-complexity"
+            title={`Сложность ${node.kind === 'start' ? 'метода' : many ? 'выделенного фрагмента' : 'блока'} с учётом циклов вокруг`}>
+            <code>{complexity === 'pending' ? '…' : complexity}</code>
+          </span>
+        )}
+      </div>
       {many ? (
         <ol className="inspector-list">
           {ordered.map((n) => (

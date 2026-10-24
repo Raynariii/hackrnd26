@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Box, Boxes, ChevronRight, CircleAlert, CircleCheck, CircleX, Download, DraftingCompass, FileCode2, FlaskConical, FolderOpen, Gauge, LayoutGrid, Moon, Play, ShieldCheck, SquareFunction, Sun, Terminal, TriangleAlert, Upload, Workflow, X } from 'lucide-react';
-import { api, ApiRequestError } from './api/client';
+import { api, ApiRequestError, isUnsupported } from './api/client';
+import { applyRunEvent, STREAM_START } from './flow/run';
 import type { DecomposeResult, Diagnostics, Finding, Graph, GraphNode, GraphOpRequest, ProjectState, RunResult, SourceFile, SourceRange, VerifyReport } from './api/types';
-import { AnalysisPanel, MetricsPanel, type AppliedFix } from './components/AnalysisPanel';
+import { AnalysisPanel, MetricsPanel, type AdviceReply, type AppliedFix } from './components/AnalysisPanel';
 import { DecomposePanel } from './components/DecomposePanel';
 import { exportSummary } from './api/download';
 import { BottomPanel, type BottomTab } from './components/BottomPanel';
@@ -89,6 +90,16 @@ export function App() {
   const [applied, setApplied] = useState<AppliedFix | null>(null);
   const [beforeFix, setBeforeFix] = useState<SourceFile[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Эндпоинты из PR роли 4, которых может не быть на сервере (#40 advice, #42 complexity, #55 decompose apply,
+   * #56 run/stream): первый ответ «нет такого» прячет функцию до перезагрузки, остальное работает как раньше.
+   */
+  const [unsupported, setUnsupported] = useState<Set<'advice' | 'complexity' | 'decomposeApply' | 'runStream'>>(new Set());
+  const markUnsupported = useCallback((f: 'advice' | 'complexity' | 'decomposeApply' | 'runStream') =>
+    setUnsupported((s) => (s.has(f) ? s : new Set(s).add(f))), []);
+  /** Big O выделенных блоков блок-схемы (POST /complexity); key — выделение и версия, к которым относится ответ. */
+  const [selComplexity, setSelComplexity] = useState<{ key: string; value: string | null } | null>(null);
+  const [applyingDecomp, setApplyingDecomp] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => stored<Theme>('jb.theme', 'dark'));
   const [panels, setPanels] = useState<Panels>(() => stored<Panels>('jb.panels', { left: true, right: true, bottom: false }));
   const [rightTab, setRightTab] = useState<RightTab>('problems');
@@ -225,6 +236,7 @@ export function App() {
       await refreshAfterChange(project, await api.updateSource(project.id, project.version, files), true);
     });
 
+  /** Запуск: вывод идёт в консоль по мере появления (SSE); сервер без стрима — обычный run целиком. */
   const runProgram = () =>
     guard(async () => {
       if (!project) return;
@@ -232,7 +244,17 @@ export function App() {
       setBottomTab('console');
       togglePanel('bottom', true);
       try {
-        setRun(await api.run(project.id, stdin));
+        let streamed = false;
+        if (!unsupported.has('runStream')) {
+          let acc = STREAM_START;
+          setRun(acc);
+          streamed = await api.runStream(project.id, stdin, (e) => {
+            acc = applyRunEvent(acc, e);
+            setRun(acc);
+          });
+          if (!streamed) markUnsupported('runStream');
+        }
+        if (!streamed) setRun(await api.run(project.id, stdin));
       } finally {
         setRunning(false);
       }
@@ -318,6 +340,63 @@ export function App() {
       }
     });
 
+  /**
+   * «Применить разбиение»: сервер переносит static-методы и поля в новые классы на копии, прогоняет quality gate
+   * (компиляция + дифф-тесты против текущей версии) и только при зелёном коммитит новую версию. Дальше — как
+   * после авто-исправления: дифф, отчёт gate, «Отменить» и полная проверка против версии 1.
+   */
+  const applyDecomposition = async (): Promise<string | null> => {
+    if (!project) return 'Нет проекта';
+    setApplyingDecomp(true);
+    try {
+      const prev = project;
+      const res = await api.applyDecomposition(project.id, project.version);
+      const change = res.result;
+      if (!change) return 'Сервер не вернул новую версию — разбиение не применено';
+      await refreshAfterChange(prev, change.state, false);
+      const added = change.state.files.filter((f) => !prev.files.some((p) => p.path === f.path)).map((f) => f.path);
+      setApplied({
+        kind: 'decompose',
+        title: added.length ? `Новые классы: ${added.map((f) => f.replace(/\.java$/, '')).join(', ')}` : 'Монолит разбит на классы',
+        description: change.description ?? (res.notes ?? []).join(' '),
+        diff: change.diff,
+        gate: change.verify ?? null,
+      });
+      setBeforeFix(prev.files);
+      setDecomp(null);
+      setActiveClass(null);
+      void runVerify();
+      return null;
+    } catch (e) {
+      if (isUnsupported(e)) {
+        markUnsupported('decomposeApply');
+        return null;
+      }
+      if (e instanceof ApiRequestError) return e.status === 409 ? 'Код изменился — пересчитайте разбиение' : e.message;
+      return String(e);
+    } finally {
+      setApplyingDecomp(false);
+    }
+  };
+
+  /** Совет LLM по находке (POST /advice): только текст, применяется обычной правкой кода и проверяется /verify. */
+  const askAdvice = async (finding: Finding): Promise<AdviceReply> => {
+    if (!project) return { error: 'Нет проекта' };
+    try {
+      const advice = await api.advice(project.id, finding.id);
+      return advice ? { text: advice.suggestion, model: advice.model ?? null } : { off: true };
+    } catch (e) {
+      if (isUnsupported(e)) {
+        markUnsupported('advice');
+        return { off: true };
+      }
+      if (e instanceof ApiRequestError) {
+        return { error: e.status === 404 ? 'Находка устарела — диагностика перечитана' : e.status === 502 ? 'Советчик не ответил, попробуйте ещё раз' : e.message };
+      }
+      return { error: String(e) };
+    }
+  };
+
   /** Класс из предложения → его члены выделены на обзоре (открываем обзор, если сейчас блок-схема метода). */
   const showProposedClass = (className: string, nodes: GraphNode[]) => {
     if (!overview || nodes.length === 0) return;
@@ -400,6 +479,24 @@ export function App() {
   };
 
   const dirty = !!project && draft !== savedContent;
+
+  // Big O выделенных блоков блок-схемы: спрашиваем сервер при каждой смене выделения (только чтение, быстро).
+  const complexityKey = graph?.level === 'method' && project && selection.length
+    ? `${project.version}|${selection.map((n) => n.id).sort().join(',')}` : null;
+  useEffect(() => {
+    if (!complexityKey || !project || unsupported.has('complexity')) return;
+    let alive = true;
+    api.complexity(project.id, project.version, selection.map((n) => n.id))
+      .then((r) => alive && setSelComplexity({ key: complexityKey, value: r.current }))
+      .catch((e) => {
+        if (isUnsupported(e)) markUnsupported('complexity');
+        else if (alive) setSelComplexity({ key: complexityKey, value: null });
+      });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ключ уже содержит версию и выделение
+  }, [complexityKey, unsupported]);
+  const complexity = !complexityKey || unsupported.has('complexity') ? undefined
+    : selComplexity?.key === complexityKey ? selComplexity.value : 'pending';
   const findingsCount = diagnostics?.findings.length ?? 0;
 
   // Горячие клавиши как в IDE: Shift+F10 — запуск, Esc — закрыть отчёт проверки.
@@ -526,7 +623,7 @@ export function App() {
             </div>
             {selected && graph && (
               <div className="inspector-dock">
-                <NodeInspector selection={selection} graph={graph} onOp={applyGraphOp} />
+                <NodeInspector selection={selection} graph={graph} onOp={applyGraphOp} complexity={complexity} />
                 {graph.level === 'method' && <div className="hint">Shift/Ctrl+клик — выделить несколько блоков подряд</div>}
               </div>
             )}
@@ -637,6 +734,7 @@ export function App() {
                   onUndo={undoFix}
                   onDismissApplied={() => setApplied(null)}
                   verifying={verifying}
+                  onAdvice={unsupported.has('advice') ? undefined : askAdvice}
                 />
               )}
               {rightTab === 'metrics' && <MetricsPanel diagnostics={diagnostics} />}
@@ -650,6 +748,13 @@ export function App() {
                   onPropose={proposeDecomposition}
                   onShowClass={(cls, nodes) => showProposedClass(cls.className, nodes)}
                   onShowMember={showMember}
+                  onApply={unsupported.has('decomposeApply') ? undefined : applyDecomposition}
+                  applying={applyingDecomp}
+                  applied={applied?.kind === 'decompose' ? applied : null}
+                  onVerify={runVerify}
+                  onUndo={undoFix}
+                  onDismissApplied={() => setApplied(null)}
+                  verifying={verifying}
                 />
               ) : <div className="empty-state">Откройте проект, чтобы предложить разбиение</div>)}
             </div>

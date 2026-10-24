@@ -42,7 +42,10 @@ export function BottomPanel({ run, verify, onOpenReport, stdin, onStdin, onRun, 
         <pre className="console">
           {!run && 'Нажмите «Запуск» — вывод программы появится здесь. Ввод для Scanner — в поле ниже.'}
           {run && !run.compile.ok && `Ошибка компиляции\n${run.compile.output ?? ''}`}
-          {run?.compile.ok && `${run.stdout ?? ''}${run.stderr ?? ''}\n[exit ${run.exitCode ?? '—'}, ${run.timeMs ?? 0} мс${run.timedOut ? ', таймаут' : ''}]`}
+          {run?.compile.ok && `${run.stdout ?? ''}${run.stderr ?? ''}`}
+          {run?.compile.ok && (run.timeMs === undefined
+            ? running && <span className="console-live">{run.stdout || run.stderr ? '\n' : ''}▍ выполняется…</span>
+            : `\n[exit ${run.exitCode ?? '—'}, ${run.timeMs} мс${run.timedOut ? ', таймаут' : ''}]`)}
         </pre>
       )}
       {tab === 'tests' && (
