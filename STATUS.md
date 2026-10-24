@@ -29,25 +29,51 @@
       return, switch/case (провал без break, стрелочные case, «нет совпадений»), break/continue с метками,
       try-with-resources/catch/finally, throw. `parent` = контейнер (цикл, ветка условия, case, try, catch, finally).
       `meta.covers` — id выражений внутри блока: по нему `Finding.nodeIds` привязываются к блокам. 17 тестов (PR #5)
-- [ ] overview: рёбра `call` (SymbolSolver, с откатом на имена)
+- [x] overview: рёбра `call` (`CallGraph`, 4 теста; PR #12): метод / конструктор / поле →
+      метод или конструктор проекта, `new X()` без явного конструктора → класс X, `this(...)`, вызовы из лямбд — от
+      метода. SymbolSolver (типы проекта из памяти + JRE), при сбое — откат на имя + число аргументов: свой класс,
+      `Класс.метод()`, `переменная.метод()` по объявленному типу. Библиотечные вызовы рёбер не дают. Повторные
+      вызовы — одно ребро, `label` = «×N». ~0.3 с на 1300 строк
 - [x] узел `raw` для неподдерживаемых конструкций в блок-схеме (локальные классы, synchronized, yield; сбой разбора
       оператора откатывается в `raw`, а не роняет граф) (PR #5)
-- [x] операции `editNode`, `insertAfter`, `delete` (`DefaultGraphOperations`, 27 тестов; PR — feat/core-graph-ops):
+- [x] операции `editNode`, `insertAfter`, `delete` (`DefaultGraphOperations`, 27 тестов; PR #7):
       цели — блоки блок-схемы (операторы, case, catch, finally, `:start`), члены обзора (метод, поле, тип) и id
       выражения из `Finding.nodeIds` (→ его оператор). Правка идёт текстом строго в границах AST-узлов, затем файл
       перепарсивается: нетронутый код байт-в-байт, вставка выровнена по соседям (табы, CRLF), ошибка → 422 без
       изменения модели. Каждый тест проверяет, что результат компилируется javac
-- [ ] операции: `move`, `wrapIf`, `wrapLoop`, `extractMethod`
-- [ ] round-trip тест на всём `corpus/`
+- [x] операции `wrapIf`, `wrapLoop`, `move`, `extractMethod` (ещё 11 тестов, итого 38; PR #10):
+      выделение — подряд идущие операторы одного блока (`nodeIds`, порядок не важен); `move` → `targetId` по правилам
+      insertAfter, члены класса — после другого члена; `extractMethod` — private (static, если исходный static) метод
+      `name`: параметры — читаемые локальные переменные, возврат — единственная переменная, нужная дальше;
+      `throws` и type-параметры копируются. Отказ (422): return / break / continue наружу, >1 выходной переменной, `var`
+- [x] round-trip тест на всём `corpus/` (`CorpusRoundTripTest`, PR — feat/core-corpus-roundtrip): каждая папка корпуса
+      + `core/src/test/resources/scope/ScopeSample.java` (scope 1–4 + бонус: sealed/record/enum, generics, лямбды,
+      Stream, switch-выражения с yield, text block, try-with-resources, multi-catch, метки, анонимный класс,
+      instanceof-паттерны): разбор без ошибок, печать байт-в-байт, overview и блок-схема каждого метода согласованы,
+      insertAfter `:start` на каждом методе. Новый пример корпуса проверяется автоматически; `raw`-конструкции
+      печатаются в лог теста (сейчас только `synchronized`) — для `docs/scope.md` (роль 4)
 - [x] откат на pretty-print, если LexicalPreservingPrinter падает (G6): `CodeGenerator.printReport` → `reformatted`
       (список файлов, напечатанных без сохранения форматирования); операции графа LPP для правок не используют
+- [x] AST-хелперы фаззинга статических методов (G5; `io.blueprints.core.fuzz.FuzzHarness`, 4 теста; PR — feat/core-fuzz-helpers):
+      `scan` — статические методы с параметрами int/long/double/boolean/char (+обёртки), String, одномерные массивы,
+      `List<Integer|String>`, varargs; остальные — в `skipped` с причиной. `common(baseline, current)` — цели с той же
+      сигнатурой в обеих версиях. `generate(targets, n)` — класс `BlueprintsFuzzHarness` (reflection, работает и с
+      private): граничные значения + Random с фиксированным seed, строка на вызов `имя(args) -> результат | throws
+      Тип: msg | timeout` (500 мс на вызов). Тест: рефакторинг через граф (extractMethod) даёт тот же вывод, смена
+      условия — расхождение ровно в строках этого метода
 **Для фронта (роль 3):** находка → блок: блок, у которого `id` или `meta.covers` содержит любой из `Finding.nodeIds`.
 `start` блок-схемы покрывает id метода (находки уровня метода, например long-method).
 **Для фронта (роль 3), `POST /graph/ops`:** `editNode` у condition/loop/switch меняет только заголовок
 (`code` = `x > 0` или `int i = 0; i < n; i++`), у case — метки (`1, 2` / `default`), у catch — параметр.
 `insertAfter` после `<метод>:start` / case / catch / finally — в начало их тела, после контейнера — после всей
-конструкции. Палитра: `kind` + короткий `code` (`condition` + `x > 0` → `if (x > 0) {}`, `loop` + `x : xs` →
+конструкции. `wrapIf`/`wrapLoop`/`extractMethod` берут `nodeIds` (подряд в одном блоке) + `code` / `name`,
+`move` — `nodeIds` + `targetId`. Палитра: `kind` + короткий `code` (`condition` + `x > 0` → `if (x > 0) {}`, `loop` + `x : xs` →
 for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`. После операции id меняются — перезапросите граф.
+`wrapIf`/`wrapLoop` отказывают (422), если выделение объявляет переменную, нужную после блока.
+**Для роли 4 (фаззинг в /verify, fuzz=true):** `targets = FuzzHarness.common(baselineModel, currentModel)`,
+`h = FuzzHarness.generate(targets, 20)`; добавить `h.file()` к файлам обеих версий, запустить в runner с
+`mainClass = h.mainClass()` и пустым stdin, сравнить stdout (нормализация `@HASH` уже в контракте) — один VerifyCase
+«fuzz» или по кейсу на метод (строки начинаются с имени метода).
 **Для роли 4:** `CodeGenerator.printReport(model).reformatted()` можно отдать в ответе как предупреждение (G6).
 **Блокеры:** —
 
@@ -66,11 +92,17 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
       методов и вызовам, с полями, которые нужно перенести (v1 — только предложение, без перемещения кода)
 - [ ] `POST /decompose` в api (apply=false → предложение) — запрос роли 4 (см. «Запросы»)
 - [ ] LLM-помощник (опц.)
+- [x] прогон анализатора по всему `corpus/` (`CorpusAnalysisTest`): любой новый пример корпуса проверяется автоматически —
+      разбор без ошибок, метрики по каждому методу, у каждой находки реальный файл, строки и `nodeIds` (PR #11)
+- [x] стык с ядром: `FindingNodeBindingTest` — каждая находка привязывается к узлу графа через `id` или `meta.covers`
+      (`methodFlow` роли 1) (PR #9)
+- [x] устойчивость: падение одного правила или файл с ошибкой разбора не обнуляют панель «Проблемы» (PR #4)
 **Известное ограничение:** LexicalPreservingPrinter не выравнивает отступы у вставленных операторов
 (`var _index = new java.util.HashSet<>(...)` печатается на уровень выше) — код валиден и компилируется,
 это косметика на полировку.
-**PR:** [#3](https://github.com/Raynariii/hackrnd26/pull/3) — 48 тестов модуля `analysis` зелёные, CI зелёный
-(backend, frontend, contracts, compose).
+**PR:** [#3](https://github.com/Raynariii/hackrnd26/pull/3) (правила, метрики, авто-исправления, декомпозиция),
+[#4](https://github.com/Raynariii/hackrnd26/pull/4) (устойчивость), [#9](https://github.com/Raynariii/hackrnd26/pull/9)
+(стык с ядром) — **53 теста** модуля `analysis` зелёные, CI зелёный (backend, frontend, contracts, compose).
 **Блокеры:** —
 
 ## Роль 3 — фронтенд
@@ -88,9 +120,17 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 **Дальше:** сквозная проверка с живым api (`docker compose up`); палитра drag&drop — если останется время.
 
 ## Роль 4 — песочница, API, сборка
-- [ ] `POST /internal/run-batch` в runner: компиляция один раз, много stdin (G2)
-- [ ] `POST /verify`: дифф-тесты версия 1 vs текущая (входы из запроса + корпус + граничные), сравнение stdout/stderr/exit
-      с нормализацией из контракта `VerifyCase` (G3)
+- [x] `POST /internal/run-batch` в runner: javac один раз, затем `java` на каждом stdin; из вывода убраны путь
+      временной папки и `Picked up JAVA_TOOL_OPTIONS` (переменные `*_JAVA_OPTIONS` не передаются в процесс) (G2, PR #19)
+- [x] `POST /verify` (G3, PR #19): эталон v1 и текущая версия — по одному run-batch на одних входах.
+      Входы: `inputs` запроса + `corpus/<пример>/inputs/*.txt` (если файлы проекта совпадают с примером корпуса) +
+      stdin прошлых `/run` + 6 граничных (`fuzz`, по умолчанию вкл.); дубли убираются, ≤ 40. Нормализация
+      (`OutputNormalizer`): `@hex` → `@HASH`, `\r\n`, пути песочницы, строки JVM; stderr — без кадров стектрейса
+      (тип + сообщение + `Caused by` остаются). `mismatch` — что и где разошлось («stdout: строка 1: ожидалось «…»,
+      получено «…»; exitCode: …»). Текущая не компилируется → 200 с `compiled=false`; эталон не компилируется → 422
+      `baseline_compile_error`. `benchmark=true` → `benchmarkInputs` или `bench-<n>.txt` из корпуса, время до/после.
+      Сквозная проверка (api + runner, `00-hello`): эквивалентная правка — 8/8 ✓ за ~2,7 с; изменённая логика и
+      исключение — точный дифф. В compose корпус монтируется в api (`./corpus:/corpus:ro`)
 - [ ] bench-входы `corpus/*/inputs/bench-*.txt` растущего размера (G4)
 - [ ] монолиты организаторов → `corpus/` (G8, как только лид их получит)
 - [ ] `docs/scope.md`: матрица «конструкция → граф / генерация / тест» по разделам 1–4 + бонус (G9)
@@ -101,6 +141,9 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 - [ ] корпус: 5–8 монолитов ~1000 строк, покрытие scope 1–4 (+ бонус)
 - [ ] `docs/`: архитектура, поддержанный scope, ограничения; README для жюри
 - [ ] проверить `docker compose up --build` с нуля
+**Для фронта (роль 3):** `POST /verify` работает по контракту `VerifyReport` (тело `{}` допустимо). Готовы: `cases[].name`
+(«corpus/…/01.txt», «Вход №1», «Граничный: …», «Бенчмарк: n = …»), `mismatch` — текст для панели «Тесты»,
+`benchmark[]` — для графика до/после (`{"benchmark": true}`; пока bench-входы есть только при передаче `benchmarkInputs`).
 **Блокеры:** —
 
 ## Запросы на изменения (контракты и чужие зоны)
@@ -114,4 +157,4 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 ## Журнал интеграций
 | Когда | Результат | Что сломалось |
 |---|---|---|
-| | | |
+| 24.10 ~09:45 (роль 1, локально: runner + api + фронт `feat/frontend-line-node`) | ✅ загрузка `ScopeSample.java` → overview (26 contains + 16 call) → блок-схемы всех 19 методов → диагностика (5 находок, все привязаны к узлам) → запуск в runner → 9 операций графа подряд (insertAfter, extractMethod, wrapIf, wrapLoop, editNode ×3, move) → повторный запуск: **вывод совпал**. Фронт рисует overview и блок-схемы на реальных данных без ошибок в консоли | 🔴 `POST /verify` — 501 (роль 4): шаг «сравнение» есть только вручную. 🟡 `wrapIf/wrapLoop` вокруг объявления, нужного дальше, ломали компиляцию; тип в `extractMethod` печатался без пробелов — исправлено (роль 1). 🟡 Фронт: overview на 36 узлов — мелкая плоская лента, рёбра call накладываются; в `client.ts` нет `graph/ops` — правка на графе из UI пока недоступна (роль 3). 🟡 Вывод javac/java в runner может начинаться со строки `Picked up JAVA_TOOL_OPTIONS`, если переменная задана в окружении — нормализация verify должна её отбрасывать (роль 4) |

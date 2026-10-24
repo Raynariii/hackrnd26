@@ -179,6 +179,11 @@ paths:
     post:
       tags: [execution]
       summary: Дифф-тесты исходная версия vs текущая (+ бенчмарк)
+      description: |
+        Входы: `inputs` из запроса + `corpus/<пример>/inputs/*.txt` (если файлы проекта совпадают с примером корпуса)
+        + stdin прошлых `/run` + граничные (при `fuzz`, по умолчанию true). Повторы убираются, максимум 40.
+        Граничный вход, на котором эталон не уложился в таймаут, пропускается. При `benchmark=true` входы
+        `benchmarkInputs` (или `bench-<n>.txt` из корпуса) тоже становятся случаями «Бенчмарк: n = …».
       requestBody:
         content:
           application/json:
@@ -189,6 +194,12 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/VerifyReport' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422':
+          description: 'Эталонная версия 1 не компилируется (error = baseline_compile_error); если не компилируется текущая — 200 с compiled=false'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
 
   /projects/{projectId}/export:
     parameters: [{ $ref: '#/components/parameters/ProjectId' }]
