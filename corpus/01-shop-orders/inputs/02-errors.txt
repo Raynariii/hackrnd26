@@ -1,0 +1,16 @@
+CUSTOMER c1 Анна Ростов
+PRODUCT p1 книги 500 1 Книга
+ORDER o1 c1 p1:2
+ORDER o2 c9 p1:1
+ORDER o3 c1 p7:1
+ORDER o4 c1 p1:abc
+CUSTOMER c1 Дубль Ростов
+PROMO BAD 150
+APPLY o1 BAD
+CANCEL o1
+FOO bar
+RESTOCK p1 -3
+ORDER o5 c1 p1:1
+CANCEL o5
+CANCEL o5
+REPORT

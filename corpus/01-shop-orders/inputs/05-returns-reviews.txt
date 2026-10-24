@@ -1,0 +1,27 @@
+CUSTOMER c1 Анна Ростов VIP
+CUSTOMER c2 Борис Москва
+CUSTOMER c3 Вера Сочи
+PRODUCT p1 электроника 15990.50 4 Наушники беспроводные
+PRODUCT p2 электроника 2490 30 Зарядное устройство
+PRODUCT p3 книги 650 40 Java для начинающих
+PRODUCT p4 дом 3999.99 3 Настольная лампа
+SUPPLIER s1 3 ООО Быстрые поставки
+SUPPLIER s2 14 Склад Дальний
+SUPPLY s1 p1 10 11000
+SUPPLY s2 p1 20 9500
+SUPPLY s2 p3 100 300
+ORDER o1 c1 p1:2,p3:3
+ORDER o2 c2 p2:5,p4:2
+ORDER o3 c3 p1:8
+ORDER o4 c2 p3:1
+RETURN o1 p3 1 брак переплёта
+RETURN o2 p2 2 передумал
+RETURN o2 p2 9 слишком много
+RETURN o3 p2 1 не тот товар
+REVIEW c1 p1 5 Отличный звук, батарея держит долго
+REVIEW c2 p1 2 Не покупал, но не нравится
+REVIEW c2 p4 4 Хорошая лампа
+REVIEW c3 p1 4 Удобные
+REVIEW c3 p3 7 Ошибка в оценке
+SUPPLY s9 p1 1 1
+REPORT

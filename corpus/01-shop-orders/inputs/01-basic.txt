@@ -1,0 +1,22 @@
+# справочники
+CUSTOMER c1 Анна Ростов VIP
+CUSTOMER c2 Борис Москва
+CUSTOMER c3 Вера Ростов
+CUSTOMER c4 Глеб Казань
+PRODUCT p1 электроника 15990.50 10 Наушники беспроводные
+PRODUCT p2 электроника 2490 25 Зарядное устройство
+PRODUCT p3 книги 650 40 Java для начинающих
+PRODUCT p4 книги 1200 2 Алгоритмы и структуры данных
+PRODUCT p5 дом 3999.99 5 Настольная лампа
+PROMO AUTUMN 10
+# заказы
+ORDER o1 c1 p1:1,p3:2
+ORDER o2 c2 p2:3
+ORDER o3 c3 p4:1,p5:1
+ORDER o4 c2 p2:3
+ORDER o5 c4 p3:5
+APPLY o2 autumn
+RESTOCK p4 5
+ORDER o6 c1 p4:2,p5:2
+CANCEL o5
+REPORT

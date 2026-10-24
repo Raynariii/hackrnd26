@@ -1,0 +1,10 @@
+ITEM A 1 x Плохая цена
+ITEM A A1 10
+ITEM A A1 10 Нормальный
+ITEM A A1 10 Дубль
+MOVE B 5
+MOVE A abc
+MOVE A -1
+HELLO
+SCAN A
+AUDIT

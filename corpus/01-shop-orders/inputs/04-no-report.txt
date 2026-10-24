@@ -1,0 +1,5 @@
+CUSTOMER c1 Анна Ростов VIP
+PRODUCT p1 дом 100 100 Кружка
+ORDER o1 c1 p1:10
+ORDER o2 c1 p1:10
+ORDER o3 c1 p1:10
