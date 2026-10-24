@@ -53,6 +53,18 @@ public final class ProjectModel {
         return units.entrySet().stream().filter(e -> e.getValue() == cu).map(Map.Entry::getKey).findFirst();
     }
 
+    /**
+     * Заменить файл заново разобранным AST (операции графа правят текст по диапазонам узлов и разбирают
+     * результат). Id пересчитываются.
+     */
+    public void replaceUnit(String path, CompilationUnit cu) {
+        if (!units.containsKey(path)) {
+            throw new IllegalArgumentException("Нет файла " + path);
+        }
+        units.put(path, cu);
+        reindex();
+    }
+
     /** Пересчитать id после изменения AST. Id детерминированы: порядок обхода файлов и узлов. */
     public void reindex() {
         idsByNode.clear();
