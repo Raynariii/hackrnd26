@@ -50,4 +50,4 @@ corpus/      тестовые монолиты
 docs/        архитектура, поддержанный scope, ограничения
 ```
 
-Документация: [docs/architecture.md](docs/architecture.md). План работ: [PLAN.md](PLAN.md). Статус: [STATUS.md](STATUS.md). Контекст и решения лида: [LEAD.md](LEAD.md).
+Документация: [docs/architecture.md](docs/architecture.md), поддержанный scope Java — [docs/scope.md](docs/scope.md). План работ: [PLAN.md](PLAN.md). Статус: [STATUS.md](STATUS.md). Контекст и решения лида: [LEAD.md](LEAD.md).
