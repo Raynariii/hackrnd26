@@ -1,0 +1,16 @@
+STUDENT x1 группа1 Ошибка
+STUDENT a1 АБ-01 Алиса
+STUDENT a1 АБ-01 Дубль
+TASK t1 ESSAY 10 1 Эссе
+TASK t1 QUIZ 0 1 Пустой тест
+TASK t2 LAB 10 1 Лаба
+SUBMIT a1 t2 11 1
+SUBMIT a1 t2 abc 1
+SUBMIT zz t2 5 1
+SUBMIT a1 t9 5 1
+SUBMIT a1 t2 7 4
+SUBMIT a1 t2 6 1
+BONUS a1
+HELLO world
+REPORT
+REPORT ZZ-99

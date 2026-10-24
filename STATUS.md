@@ -190,25 +190,30 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
       `baseline_compile_error`. `benchmark=true` → `benchmarkInputs` или `bench-<n>.txt` из корпуса, время до/после.
       Сквозная проверка (api + runner, `00-hello`): эквивалентная правка — 8/8 ✓ за ~2,7 с; изменённая логика и
       исключение — точный дифф. В compose корпус монтируется в api (`./corpus:/corpus:ro`)
-- [x] `POST /fixes/{findingId}` (запрос роли 2, PR — `feat/api-fixes-decompose`): `FixEngine.apply` → **quality gate**
+- [x] `POST /fixes/{findingId}` (запрос роли 2, PR #21, #23): `FixEngine.apply` → **quality gate**
       (`QualityGate`: новая версия vs текущая через verify — компиляция + дифф-тесты) → коммит новой версии.
       Ответ `ChangeResult` = state + unified diff + `description` + `verify` (отчёт gate). Ошибки 422:
       `fix_not_applicable`, `quality_gate_failed` (сессия не меняется), `parse_error`; 409 — устаревшая версия.
       Сквозная проверка на `OrdersMonolith`: StringBuilder, for-each по LinkedList, константы — 3 исправления подряд, gate 6/6
 - [x] `POST /decompose` (запрос роли 2): `Decomposer.propose` → `proposal` + `notes`; `apply=true` → 501 (G7)
-- [ ] bench-входы `corpus/*/inputs/bench-*.txt` растущего размера (G4)
+- [x] bench-входы `corpus/*/inputs/bench-<n>.txt` растущего размера (G4, PR — `feat/corpus-monoliths`): `corpus/gen_bench.py`
+      (детерминированно, n = 2000/4000/8000, у демо 5000/10000/20000), подобраны под заложенные O(n²)
 - [ ] монолиты организаторов → `corpus/` (G8, как только лид их получит)
 - [ ] `docs/scope.md`: матрица «конструкция → граф / генерация / тест» по разделам 1–4 + бонус (G9)
 - [ ] фаззинг статических методов через генерируемую обвязку (G5, P2)
 - [ ] генерация JUnit golden-master + `GET /export` (zip)
 - [ ] бенчмарк n, 2n, 4n
 - [ ] SSE-консоль для `/run` (опц.)
-- [ ] корпус: 5–8 монолитов ~1000 строк, покрытие scope 1–4 (+ бонус)
+- [x] корпус: 6 монолитов (~3000 строк) + `00-hello`, разделы 1–4 + бонус, у каждого `NOTES.md` (scope + дефекты)
+      и 3–5 входов (PR — `feat/corpus-monoliths`). **`06-demo-warehouse` — пример для демо:** три авто-исправления
+      O(n²) → O(n), gate 9/9 на каждом, verify v1 vs v4 12/12, бенчмарк ×1,5 / ×2,3 / ×6,5 (n = 5k/10k/20k).
+      `CorpusSmokeTest` (runner): каждый пример компилируется, все входы детерминированы. `corpus/check.sh` — вручную
+- [ ] довести примеры до ~1000 строк (сейчас 440–660) — по остаточному принципу
 - [ ] `docs/`: архитектура, поддержанный scope, ограничения; README для жюри
 - [ ] проверить `docker compose up --build` с нуля
 **Для фронта (роль 3):** `POST /verify` работает по контракту `VerifyReport` (тело `{}` допустимо). Готовы: `cases[].name`
 («corpus/…/01.txt», «Вход №1», «Граничный: …», «Бенчмарк: n = …»), `mismatch` — текст для панели «Тесты»,
-`benchmark[]` — для графика до/после (`{"benchmark": true}`; пока bench-входы есть только при передаче `benchmarkInputs`).
+`benchmark[]` — для графика до/после (`{"benchmark": true}`; bench-входы берутся из корпуса, демо — `06-demo-warehouse`).
 **Блокеры:** —
 
 ## Запросы на изменения (контракты и чужие зоны)
@@ -216,11 +221,13 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 
 | Кто просит | Что | Кому | Статус |
 |---|---|---|---|
-| Роль 2 | `POST /api/projects/{id}/fixes/{findingId}`: вызвать `io.blueprints.analysis.FixEngine#apply(files, findingId)`, закоммитить новую версию и вернуть `ChangeResult` (state + diff); `FixNotApplicableException` → 409/422 с текстом причины. Контракт и контроллер — зона роли 4. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
+| Роль 2 | `POST /api/projects/{id}/fixes/{findingId}`: вызвать `io.blueprints.analysis.FixEngine#apply(files, findingId)`, закоммитить новую версию и вернуть `ChangeResult` (state + diff); `FixNotApplicableException` → 409/422 с текстом причины. Контракт и контроллер — зона роли 4. | Роль 4 | Сделано — PR #21, #23 |
 | Роль 4 | В `GET /diagnostics` у `collection-lookup-in-loop` стоит `fix.autoApplicable=true`, но `FixEngine.apply` отказывает (коллекция меняется в цикле — `00-hello`, `OrdersMonolith`). Кнопка «Применить» в UI обещает то, чего нет: выставлять `autoApplicable` по тем же проверкам, что и `apply`. | Роль 2 | Сделано — PR #29: `autoApplicable` = `Fixers.supports(model, finding)` (те же проверки, что и `apply`), текст отказа у 422 совпадает |
-| Роль 2 | `POST /api/projects/{id}/decompose`: `new Decomposer().propose(session.model())` → `DecomposeResult.proposal` (apply=false, v1); при apply=true пока 501 `not_implemented`. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
+| Роль 2 | `POST /api/projects/{id}/decompose`: `new Decomposer().propose(session.model())` → `DecomposeResult.proposal` (apply=false, v1); при apply=true пока 501 `not_implemented`. | Роль 4 | Сделано — PR #21, #23 |
 | Роль 2 | (опц., P2) `POST /api/projects/{id}/advice` с `{findingId}`: `ClaudeAdvisor.fromEnvironment().advise(...)` по коду метода/фрагмента находки; без `ANTHROPIC_API_KEY` — `enabled=false` → 204; применение совета — только через quality gate (как `/fixes`). Заодно `ANTHROPIC_API_KEY=` в `.env.example` (опц.). Контракт — зона роли 4. | Роль 4 | Открыт (P2) |
 | Роль 2 | (опц., P1) `POST /api/projects/{id}/complexity` с `{version, nodeIds}`: `new MetricsCalculator().complexityOf(session.model(), nodeIds).toString()` → `{current}` для выделенных блоков блок-схемы (фронт уже умеет выделять блоки для `graph/ops`). Библиотечная часть готова (PR #37). Контракт — зона роли 4. | Роль 4 | Открыт (P1) |
+| Роль 4 | **Баг `FixEngine.forEachInsteadOfIndex`:** не проверяет, что цикл идёт с 0 до `size()` с шагом 1. В `corpus/01-shop-orders` (`printAuditTail`: `for (int i = from; …)`) for-each печатает весь журнал вместо хвоста — **quality gate отклонил** исправление (поведение разошлось), но кнопка обещает его. Нужна проверка: init = 0, условие `i < x.size()`, update `i++`. | Роль 2 | Открыт |
+| Роль 4 | Анализатор не находит заложенные дефекты: `duplicate-code` (`01-shop-orders`: `totalQuantityForCity`/`…Category`; `02-library`: ветки `fineFor`) и `linked-list-index-access` у поля объекта (`02-library`: `b.waitList.get(i)`). | Роль 2 | Открыт |
 
 ## Журнал интеграций
 | Когда | Результат | Что сломалось |
