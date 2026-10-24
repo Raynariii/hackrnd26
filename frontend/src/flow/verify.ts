@@ -66,27 +66,41 @@ export function speedup(points: BenchPoint[]): { n: number; ratio: number } | nu
 }
 
 /**
- * Эмпирическая степень роста: наклон log(время) от log(n) по крайним точкам.
- * ≈1 — линейно, ≈2 — квадратично. Нужно минимум две точки с разными n; на коротких временах шумно.
+ * Эмпирическая степень роста k в модели «время = c + a·n^k».
+ * Постоянная часть c (старт JVM, компиляция класса, чтение маленьких входов) у runner — сотни миллисекунд и на
+ * коротких n съедает рост: наклон log(время)/log(n) по крайним точкам показал бы квадратичный код как ≈ O(n), а
+ * линейный — как ≈ O(√n). Поэтому при трёх и более точках на геометрической сетке (n, 2n, 4n — так растут
+ * bench-входы) берём отношение последних разностей: c сокращается, (t₃ − t₂)/(t₂ − t₁) = r^k.
+ * Меньше 1 не бывает: вход длины n программа читает целиком — шум на плоском графике показываем как O(n).
  */
 export function growthExponent(points: BenchPoint[], pick: 'baselineMs' | 'currentMs'): number | null {
   const sorted = [...points].filter((p) => p[pick] > 0 && p.n > 0).sort((x, y) => x.n - y.n);
   if (sorted.length < 2) return null;
-  const a = sorted[0];
-  const b = sorted.at(-1)!;
-  if (a.n === b.n) return null;
-  return Math.log(b[pick] / a[pick]) / Math.log(b.n / a.n);
+  const first = sorted[0];
+  const last = sorted.at(-1)!;
+  if (first.n === last.n) return null;
+  if (sorted.length >= 3) {
+    const [a, b, c] = sorted.slice(-3);
+    const r1 = b.n / a.n;
+    const r2 = c.n / b.n;
+    if (r1 > 1 && Math.abs(r1 - r2) / r1 < 0.05) {
+      const d1 = b[pick] - a[pick];
+      const d2 = c[pick] - b[pick];
+      if (d1 <= 0 || d2 <= 0) return 1; // время не растёт сверх шума
+      return Math.max(1, Math.log(d2 / d1) / Math.log(r2));
+    }
+  }
+  return Math.max(1, Math.log(last[pick] / first[pick]) / Math.log(last.n / first.n));
 }
 
-/** Подпись класса роста по степени: ближайший из O(1), O(log n)… грубо, только для подсказки. */
+/** Подпись роста: целые степени — классом O(…), промежуточные — числом (смесь линейной и квадратичной частей). */
 export function growthLabel(k: number | null): string | null {
   if (k === null || !Number.isFinite(k)) return null;
-  if (k < 0.3) return '≈ O(1)';
-  if (k < 0.75) return '≈ O(√n)';
-  if (k < 1.35) return '≈ O(n)';
-  if (k < 1.75) return '≈ O(n log n)…O(n^1.5)';
-  if (k < 2.5) return '≈ O(n²)';
-  return '≈ O(n³) и хуже';
+  if (k < 1.25) return '≈ O(n)';
+  if (Math.abs(k - 2) <= 0.25) return '≈ O(n²)';
+  if (Math.abs(k - 3) <= 0.25) return '≈ O(n³)';
+  if (k > 3.25) return '≈ O(n³) и хуже';
+  return `≈ n^${k.toFixed(1)}`;
 }
 
 export type Verdict = 'preserved' | 'changed' | 'not-compiled' | 'empty';

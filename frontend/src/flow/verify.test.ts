@@ -42,6 +42,25 @@ test('growthExponent: квадратичный эталон и линейная 
   assert.equal(growthLabel(null), null);
 });
 
+test('growthExponent: постоянная часть замера (старт JVM) не искажает рост', () => {
+  const withJvm = quadToLinear.map((p) => ({ n: p.n, baselineMs: p.baselineMs + 300, currentMs: p.currentMs + 300 }));
+  assert.equal(growthExponent(withJvm, 'baselineMs'), 2);
+  assert.equal(growthExponent(withJvm, 'currentMs'), 1);
+  // настоящий замер corpus/06-demo-warehouse (v1 против трёх исправлений, время с запуском JVM)
+  const wh = [
+    { n: 5000, baselineMs: 424, currentMs: 268 },
+    { n: 10000, baselineMs: 943, currentMs: 375 },
+    { n: 20000, baselineMs: 2656, currentMs: 491 },
+  ];
+  assert.equal(growthLabel(growthExponent(wh, 'baselineMs')), '≈ n^1.7');
+  assert.equal(growthLabel(growthExponent(wh, 'currentMs')), '≈ O(n)');
+  // плоский шум — не «быстрее линейного»
+  assert.equal(growthExponent([{ n: 1, baselineMs: 300, currentMs: 300 }, { n: 2, baselineMs: 290, currentMs: 300 }, { n: 4, baselineMs: 310, currentMs: 300 }], 'currentMs'), 1);
+  assert.equal(growthLabel(1.1), '≈ O(n)');
+  assert.equal(growthLabel(2.9), '≈ O(n³)');
+  assert.equal(growthLabel(1.5), '≈ n^1.5');
+});
+
 test('verdict', () => {
   assert.equal(verdict({ behaviorPreserved: true, passed: 3, total: 3, cases: [] }), 'preserved');
   assert.equal(verdict({ behaviorPreserved: false, passed: 2, total: 3, cases: [] }), 'changed');
