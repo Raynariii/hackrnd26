@@ -51,6 +51,8 @@ public final class MonolithSplitter {
     private static final int MIN_METHODS = 6;
     /** Минимум методов в группе, чтобы выделять её в отдельный класс. */
     private static final int MIN_GROUP = 2;
+    /** Сколько проходов label propagation делаем по графу зависимостей. */
+    private static final int PROPAGATION_PASSES = 5;
 
     private static final Map<Responsibility, List<String>> KEYWORDS = keywords();
 
@@ -151,7 +153,7 @@ public final class MonolithSplitter {
                 if (methods.size() < MIN_METHODS) {
                     continue;
                 }
-                Map<Responsibility, List<MethodDeclaration>> groups = group(methods);
+                Map<Responsibility, List<MethodDeclaration>> groups = group(type, methods);
                 List<PlannedGroup> split = new ArrayList<>();
                 for (Map.Entry<Responsibility, List<MethodDeclaration>> group : groups.entrySet()) {
                     if (group.getValue().size() < MIN_GROUP) {
@@ -169,30 +171,122 @@ public final class MonolithSplitter {
         return List.copyOf(plans);
     }
 
-    private Map<Responsibility, List<MethodDeclaration>> group(List<MethodDeclaration> methods) {
+    private Map<Responsibility, List<MethodDeclaration>> group(ClassOrInterfaceDeclaration owner,
+                                                               List<MethodDeclaration> methods) {
         Map<Responsibility, List<MethodDeclaration>> groups = new LinkedHashMap<>();
         for (Responsibility responsibility : Responsibility.values()) {
             groups.put(responsibility, new ArrayList<>());
         }
-        Map<String, Responsibility> byName = new LinkedHashMap<>();
+        // Имена дают только «семена»: метод с говорящим именем задаёт метку кластера.
+        Map<String, Responsibility> labels = new LinkedHashMap<>();
         for (MethodDeclaration method : methods) {
-            Responsibility responsibility = classifyByName(method);
-            byName.put(method.getNameAsString(), responsibility);
-            groups.get(responsibility).add(method);
+            labels.put(method.getNameAsString(), classifyByName(method));
         }
-        // Второй проход: методы без «говорящего» имени относим туда, куда зовут их соседи.
+        // Дальше метки расползаются по графу зависимостей (вызовы в обе стороны + общие поля):
+        // безымянные помощники попадают к тем, кто их зовёт, а не наугад.
+        Map<String, Set<String>> adjacency = adjacency(owner, methods);
+        for (int pass = 0; pass < PROPAGATION_PASSES; pass++) {
+            boolean changed = false;
+            for (MethodDeclaration method : methods) {
+                String name = method.getNameAsString();
+                if (labels.get(name) != Responsibility.UTILS) {
+                    continue;
+                }
+                Responsibility propagated = vote(adjacency.getOrDefault(name, Set.of()), labels);
+                if (propagated != Responsibility.UTILS) {
+                    labels.put(name, propagated);
+                    changed = true;
+                }
+            }
+            if (!changed) {
+                break;
+            }
+        }
         for (MethodDeclaration method : methods) {
-            if (byName.get(method.getNameAsString()) != Responsibility.UTILS) {
-                continue;
-            }
-            Responsibility byCalls = classifyByCalls(method, byName);
-            if (byCalls != Responsibility.UTILS) {
-                groups.get(Responsibility.UTILS).remove(method);
-                groups.get(byCalls).add(method);
-            }
+            groups.get(labels.get(method.getNameAsString())).add(method);
         }
         groups.entrySet().removeIf(entry -> entry.getValue().isEmpty());
         return groups;
+    }
+
+    /**
+     * Ненаправленный граф зависимостей методов класса: вызов (в любую сторону) и общее поле.
+     * По нему распространяются метки — это и есть label propagation из PLAN.md §4.
+     */
+    private static Map<String, Set<String>> adjacency(ClassOrInterfaceDeclaration owner,
+                                                     List<MethodDeclaration> methods) {
+        Map<String, Set<String>> adjacency = new LinkedHashMap<>();
+        Set<String> names = new LinkedHashSet<>();
+        methods.forEach(method -> names.add(method.getNameAsString()));
+        for (MethodDeclaration method : methods) {
+            String name = method.getNameAsString();
+            adjacency.putIfAbsent(name, new LinkedHashSet<>());
+            for (String called : localCalls(method)) {
+                if (!names.contains(called) || called.equals(name)) {
+                    continue;
+                }
+                adjacency.get(name).add(called);
+                adjacency.computeIfAbsent(called, ignored -> new LinkedHashSet<>()).add(name);
+            }
+        }
+        // Общее <em>поле класса</em> — тоже зависимость (локальные переменные и параметры не в счёт,
+        // иначе через `order` соединились бы все методы подряд).
+        Set<String> fields = new LinkedHashSet<>();
+        owner.getFields().forEach(field -> field.getVariables()
+                .forEach(declarator -> fields.add(declarator.getNameAsString())));
+        Map<String, Set<String>> byField = new LinkedHashMap<>();
+        for (MethodDeclaration method : methods) {
+            for (NameExpr read : method.findAll(NameExpr.class)) {
+                if (!fields.contains(read.getNameAsString())) {
+                    continue;
+                }
+                byField.computeIfAbsent(read.getNameAsString(), ignored -> new LinkedHashSet<>())
+                        .add(method.getNameAsString());
+            }
+        }
+        for (Set<String> sharing : byField.values()) {
+            if (sharing.size() < 2) {
+                continue;
+            }
+            for (String left : sharing) {
+                for (String right : sharing) {
+                    if (!left.equals(right) && names.contains(right)) {
+                        adjacency.computeIfAbsent(left, ignored -> new LinkedHashSet<>()).add(right);
+                    }
+                }
+            }
+        }
+        return adjacency;
+    }
+
+    /**
+     * Метка, которую поддерживает большинство соседей; {@code UTILS}, если поддержки нет.
+     * При равенстве голосов не отдаём метод точке входа: {@code Main} должен оставаться сценарием,
+     * а не собирать вокруг себя всю логику.
+     */
+    private static Responsibility vote(Set<String> neighbours, Map<String, Responsibility> labels) {
+        Map<Responsibility, Integer> votes = new LinkedHashMap<>();
+        for (String neighbour : neighbours) {
+            Responsibility label = labels.get(neighbour);
+            if (label != null && label != Responsibility.UTILS) {
+                votes.merge(label, 1, Integer::sum);
+            }
+        }
+        return votes.entrySet().stream()
+                .min((left, right) -> {
+                    int byVotes = Integer.compare(right.getValue(), left.getValue());
+                    if (byVotes != 0) {
+                        return byVotes;
+                    }
+                    boolean leftMain = left.getKey() == Responsibility.MAIN;
+                    boolean rightMain = right.getKey() == Responsibility.MAIN;
+                    if (leftMain != rightMain) {
+                        return leftMain ? 1 : -1;
+                    }
+                    return Integer.compare(left.getKey().ordinal(), right.getKey().ordinal());
+                })
+                .map(Map.Entry::getKey)
+                .orElse(Responsibility.UTILS);
     }
 
     private static Responsibility classifyByName(MethodDeclaration method) {
@@ -210,20 +304,6 @@ public final class MonolithSplitter {
             }
         }
         return Responsibility.UTILS;
-    }
-
-    private static Responsibility classifyByCalls(MethodDeclaration method, Map<String, Responsibility> byName) {
-        Map<Responsibility, Integer> votes = new LinkedHashMap<>();
-        for (String name : localCalls(method)) {
-            Responsibility responsibility = byName.get(name);
-            if (responsibility != null && responsibility != Responsibility.UTILS) {
-                votes.merge(responsibility, 1, Integer::sum);
-            }
-        }
-        return votes.entrySet().stream()
-                .max(Map.Entry.comparingByValue())
-                .map(Map.Entry::getKey)
-                .orElse(Responsibility.UTILS);
     }
 
     /** Имена методов, которые вызывает метод (только свои, без разыменования). */
