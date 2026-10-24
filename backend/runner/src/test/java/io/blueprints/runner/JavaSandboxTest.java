@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class JavaSandboxTest {
 
@@ -86,5 +87,38 @@ class JavaSandboxTest {
         RunResult result = sandbox.run(new RunnerRequest(List.of(new SourceFile("Main.java", src)), null, "", 3_000));
 
         assertThat(result.timedOut()).isTrue();
+    }
+
+    @Test
+    void rejectsPathTraversal() {
+        assertThatThrownBy(() -> sandbox.runBatch(new RunnerBatchRequest(
+                List.of(new SourceFile("../Evil.java", "class Evil {}")), null, List.of(""), 20_000)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Недопустимый путь");
+    }
+
+    @Test
+    void rejectsOptionInjectionThroughMainClass() {
+        assertThatThrownBy(() -> sandbox.runBatch(new RunnerBatchRequest(
+                List.of(new SourceFile("Main.java", "public class Main { }")), "-version", List.of(""), 20_000)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("mainClass");
+    }
+
+    @Test
+    void truncatesHugeOutputWithoutReadingItWhole() throws Exception {
+        JavaSandbox small = new JavaSandbox(100, 60_000, "128m");
+        String src = """
+                public class Main {
+                    public static void main(String[] args) {
+                        System.out.println("x".repeat(500));
+                    }
+                }
+                """;
+
+        RunResult result = small.runBatch(new RunnerBatchRequest(
+                List.of(new SourceFile("Main.java", src)), null, List.of(""), 20_000)).results().get(0);
+
+        assertThat(result.stdout()).hasSizeLessThan(200).contains("[вывод обрезан]");
     }
 }
