@@ -97,14 +97,20 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 - [x] `POST /fixes/{id}` (с quality gate) и `POST /decompose` (предложение) подключены в api ролью 4 (PR #21, #23)
 
 ### 2a — правила, метрики, общие файлы модуля
-- [ ] **P0, разблокер — первым, отдельным PR.** Чисто механический рефакторинг без изменения поведения (все 53 теста
-      зелёные без правок ассертов, публичный API модуля прежний):
+- [x] **P0, разблокер — первым, отдельным PR (PR #29).** Чисто механический рефакторинг без изменения поведения
+      (все 53 старых теста зелёные без правок ассертов, публичный API модуля прежний):
       `rules/Rules.java` — реестр правил, `Analyzer.defaultRules()` делегирует ему;
-      `fixes/Fixer` (интерфейс: `kind()`, `supports(Finding)`, `apply(...)`) + `fixes/Fixers.java` — реестр,
-      4 ветки `switch` из `FixEngine` разнесены по классам `fixes/*Fix.java`, `FixEngine` остаётся фасадом;
-      `Analyzer` выставляет `Fix.autoApplicable` по `Fixers.supports(finding)`, а не по правилу;
-      пакет `decompose/` для внутренностей `Decomposer` (сам `Decomposer` — фасад).
-      Это единственная задача, которой разрешено трогать файлы 2b и 2c. До её слияния 2b/2c только добавляют новые файлы.
+      `fixes/Fixer` (интерфейс: `kind()`, `refusalReason(model, finding)`, `apply(...)`, `supports(...)` по умолчанию)
+      + `fixes/Fixers.java` — реестр, 4 ветки `switch` из `FixEngine` разнесены по классам `fixes/*Fix.java`;
+      `FixEngine` — фасад, диспетчеризует по `Fix.kind`, а не по `finding.rule()`;
+      `Analyzer` выставляет `Fix.autoApplicable` по `Fixers.supports(model, finding)` — тем же проверкам, что и
+      `apply` (закрыт запрос роли 4), а не по правилу;
+      пакет `decompose/` для внутренностей `Decomposer` (сам `Decomposer` — фасад, record'ы и `propose(model)` прежние).
+      **Сделано:** 2b/2c разблокированы — своё исправление = `Fixer` + строка в `fixes/Fixers`, стратегия — файл
+      в `decompose/`, без правки общих файлов. Инвариант «флаг = реальное применение» закреплён
+      `AnalyzerFixApplicabilityTest`. Пересечение: PR #27 (`feat/analysis-fix-safety`, та же задача через правила +
+      `FixSafety`) — предложено слить #29 первым и ребейзнуть #27; `FixSafety` заменён реестром, полезные
+      не-пересекающиеся части (словарь декомпозиции, тесты) — отдельным PR после ребейза.
 - [ ] P1 Big O на фрагмент (выделение блоков в блок-схеме), не только на метод — `PLAN.md` §4
 - [ ] P1 стоимость Stream API и лямбд в `CostModel` (бонус scope): `stream()…collect` / `sorted()` / `anyMatch` в цикле
 - [ ] P1 прогон по монолитам организаторов, как только они появятся в `corpus/` (G8): нет падений и явных ложных находок
@@ -182,9 +188,8 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 | Кто просит | Что | Кому | Статус |
 |---|---|---|---|
 | Роль 2 | `POST /api/projects/{id}/fixes/{findingId}`: вызвать `io.blueprints.analysis.FixEngine#apply(files, findingId)`, закоммитить новую версию и вернуть `ChangeResult` (state + diff); `FixNotApplicableException` → 409/422 с текстом причины. Контракт и контроллер — зона роли 4. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
-| Роль 4 | В `GET /diagnostics` у `collection-lookup-in-loop` стоит `fix.autoApplicable=true`, но `FixEngine.apply` отказывает (коллекция меняется в цикле — `00-hello`, `OrdersMonolith`). Кнопка «Применить» в UI обещает то, чего нет: выставлять `autoApplicable` по тем же проверкам, что и `apply`. | Роль 2 | Открыт |
+| Роль 4 | В `GET /diagnostics` у `collection-lookup-in-loop` стоит `fix.autoApplicable=true`, но `FixEngine.apply` отказывает (коллекция меняется в цикле — `00-hello`, `OrdersMonolith`). Кнопка «Применить» в UI обещает то, чего нет: выставлять `autoApplicable` по тем же проверкам, что и `apply`. | Роль 2 | Сделано — PR #29: `autoApplicable` = `Fixers.supports(model, finding)` (те же проверки, что и `apply`), текст отказа у 422 совпадает |
 | Роль 2 | `POST /api/projects/{id}/decompose`: `new Decomposer().propose(session.model())` → `DecomposeResult.proposal` (apply=false, v1); при apply=true пока 501 `not_implemented`. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
-| Роль 4 | В `GET /diagnostics` у `collection-lookup-in-loop` стоит `fix.autoApplicable=true`, но `FixEngine.apply` отказывает (коллекция меняется в цикле — `00-hello`, `OrdersMonolith`). Кнопка «Применить» в UI обещает то, чего нет: выставлять `autoApplicable` по тем же проверкам, что и `apply`. | Роль 2 | Открыт |
 
 ## Журнал интеграций
 | Когда | Результат | Что сломалось |
