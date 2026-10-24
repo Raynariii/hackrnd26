@@ -13,8 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Минимальная реализация для каркаса: overview = типы + их члены с рёбрами contains.
- * methodFlow — {@link MethodFlowBuilder}. TODO(роль 1): рёбра call через SymbolSolver.
+ * Overview = типы + их члены (рёбра contains) + рёбра call ({@link CallGraph}). methodFlow — {@link MethodFlowBuilder}.
  */
 public final class DefaultGraphBuilder implements GraphBuilder {
 
@@ -52,6 +51,7 @@ public final class DefaultGraphBuilder implements GraphBuilder {
                 }
             }
         });
+        edges.addAll(CallGraph.edges(model));
         return new Graph(GraphLevel.OVERVIEW, null, nodes, edges);
     }
 
