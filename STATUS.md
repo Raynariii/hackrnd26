@@ -111,7 +111,10 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
       `AnalyzerFixApplicabilityTest`. Пересечение: PR #27 (`feat/analysis-fix-safety`, та же задача через правила +
       `FixSafety`) — предложено слить #29 первым и ребейзнуть #27; `FixSafety` заменён реестром, полезные
       не-пересекающиеся части (словарь декомпозиции, тесты) — отдельным PR после ребейза.
-- [ ] P1 Big O на фрагмент (выделение блоков в блок-схеме), не только на метод — `PLAN.md` §4
+- [x] P1 Big O на фрагмент (PR #37): `MetricsCalculator.complexityOf(model, nodeIds)` — сложность выбранных
+      блоков блок-схемы по их AST-поддеревьям. Циклы-предки учитываются (блок внутри двух циклов — O(n²)),
+      синтетический `<id метода>:start` даёт сложность метода целиком, неизвестные id игнорируются; чистая
+      функция, граф не меняется. 3 теста. **Для UI нужен эндпоинт — запрос роли 4 ниже (P1, опционально).**
 - [x] P1 стоимость Stream API и лямбд в `CostModel` (бонус scope; PR #34): терминальные операции
       (`collect`/`toList`/`count`/`sum`/`forEach`/`anyMatch`/`findFirst`/…) — один проход O(n); `sorted` — O(n log n);
       лямбда в `filter/map/anyMatch/forEach/collect` и коллекторных фабриках выполняется на каждом элементе,
@@ -204,6 +207,7 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 | Роль 4 | В `GET /diagnostics` у `collection-lookup-in-loop` стоит `fix.autoApplicable=true`, но `FixEngine.apply` отказывает (коллекция меняется в цикле — `00-hello`, `OrdersMonolith`). Кнопка «Применить» в UI обещает то, чего нет: выставлять `autoApplicable` по тем же проверкам, что и `apply`. | Роль 2 | Сделано — PR #29: `autoApplicable` = `Fixers.supports(model, finding)` (те же проверки, что и `apply`), текст отказа у 422 совпадает |
 | Роль 2 | `POST /api/projects/{id}/decompose`: `new Decomposer().propose(session.model())` → `DecomposeResult.proposal` (apply=false, v1); при apply=true пока 501 `not_implemented`. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
 | Роль 2 | (опц., P2) `POST /api/projects/{id}/advice` с `{findingId}`: `ClaudeAdvisor.fromEnvironment().advise(...)` по коду метода/фрагмента находки; без `ANTHROPIC_API_KEY` — `enabled=false` → 204; применение совета — только через quality gate (как `/fixes`). Заодно `ANTHROPIC_API_KEY=` в `.env.example` (опц.). Контракт — зона роли 4. | Роль 4 | Открыт (P2) |
+| Роль 2 | (опц., P1) `POST /api/projects/{id}/complexity` с `{version, nodeIds}`: `new MetricsCalculator().complexityOf(session.model(), nodeIds).toString()` → `{current}` для выделенных блоков блок-схемы (фронт уже умеет выделять блоки для `graph/ops`). Библиотечная часть готова (PR #37). Контракт — зона роли 4. | Роль 4 | Открыт (P1) |
 
 ## Журнал интеграций
 | Когда | Результат | Что сломалось |
