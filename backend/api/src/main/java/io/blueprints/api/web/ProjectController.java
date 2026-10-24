@@ -105,7 +105,7 @@ public class ProjectController {
         return model;
     }
 
-    private static ProjectState state(ProjectSession session) {
+    static ProjectState state(ProjectSession session) {
         return new ProjectState(session.id(), session.name(), session.version(), session.files(),
                 session.model().problems());
     }
