@@ -92,9 +92,10 @@ public class RunnerClient implements BatchRunner {
     }
 
     @Override
-    public RunBatchResult runBatch(List<SourceFile> files, List<String> inputs, int timeoutMs) {
+    public RunBatchResult runBatch(List<SourceFile> files, String mainClass, List<String> inputs, int timeoutMs) {
         Map<String, Object> body = new HashMap<>();
         body.put("files", files);
+        body.put("mainClass", mainClass);
         body.put("inputs", inputs);
         body.put("timeoutMs", timeoutMs);
         return client.post()
