@@ -80,3 +80,12 @@ test('caseMismatch по ответу настоящего VerifyService: кан�
   assert.equal(caseMismatch({ name: 'x', ok: false, expected: exp, actual: run('9', { stderr: 'e' }), mismatch: 'stdout: …; stderr: …' })!.channel, 'stdout');
   assert.equal(caseMismatch({ name: 'x', ok: false, expected: exp, actual: run('', { timedOut: true }), mismatch: 'timeout: текущая версия не уложилась в лимит времени' })!.channel, 'timeout');
 });
+
+import { endLabels } from './verify.ts';
+
+test('endLabels: далёкие концы — как есть, близкие — разведены, совпавшие — одна подпись', () => {
+  assert.deepEqual(endLabels(100, 40), { merged: false, before: 100, after: 40 });
+  assert.deepEqual(endLabels(100, 94), { merged: false, before: 105, after: 89 });
+  assert.deepEqual(endLabels(50, 60), { merged: false, before: 47, after: 63 });
+  assert.deepEqual(endLabels(80, 81), { merged: true, y: 80.5 });
+});

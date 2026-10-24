@@ -1,4 +1,6 @@
 import type { ChangeResult, DecomposeResult, Diagnostics, Graph, GraphOpRequest, ProjectState, RunResult, SourceFile, VerifyReport, VerifyRequest } from '../api/types';
+import type { Advice, ComplexityResult, RunStreamEvent } from '../api/pending';
+import { mockComplexity } from './complexity';
 import { mockDiagnostics, mockMethodFlow, mockOverview, mockProject, mockRun, mockVerify, mockVerifyFail, mockVerifyNoCompile } from './fixtures';
 import { MAIN_FIX_REJECTION, opsDemo, ordersFixesDemo, realDemos, type RealDemo, type Snapshot } from './realDemos';
 import { ApiRequestError } from '../api/errors';
@@ -141,6 +143,39 @@ export const mockApi = {
     const file = demo?.file ?? (opsMode ? opsDemo.file : '');
     const rec = demo === demoOriginal ? (decomposeDemo as Record<string, DecomposeResult>)[file] : undefined;
     return delay(rec ?? { proposal: [], notes: ['В демо разбиение записано только для исходного кода ?demo=orders и ?demo=scope'] });
+  },
+  /**
+   * Как POST /complexity (PR #42): худшее из глубины циклов и записанных оценок анализатора внутри выделения
+   * (сервер считает сам, MetricsCalculator).
+   */
+  complexity: (_id: string, version: number, nodeIds: string[]): Promise<ComplexityResult> => {
+    if (version !== project.version) return Promise.reject(new ApiRequestError(409, { error: 'version_conflict', message: 'Проект изменился' }));
+    const flows: Graph[] = opsMode ? [snapshot.flow] : demo ? Object.values(demo.methods) : [mockMethodFlow];
+    const flow = flows.find((g) => nodeIds.every((id) => g.nodes.some((n) => n.id === id)));
+    if (!flow) return Promise.reject(new ApiRequestError(404, { error: 'not_found', message: 'Блоки не найдены в этой версии' }));
+    const diagnostics = opsMode ? snapshot.diagnostics : demo ? demo.diagnostics : mockDiagnostics;
+    return delay({ version, current: mockComplexity(flow, nodeIds, diagnostics) });
+  },
+  /** Советчику нужен ANTHROPIC_API_KEY на сервере — в демо его нет, как без ключа (204). */
+  advice: (_id: string, _findingId: string): Promise<Advice | null> => delay(null),
+  applyDecomposition: (_id: string, version: number): Promise<DecomposeResult> => {
+    if (version !== project.version) return Promise.reject(new ApiRequestError(409, { error: 'version_conflict', message: 'Проект изменился' }));
+    return unprocessable('В демо применение разбиения не записано: Decomposer и quality gate работают только с бэкендом');
+  },
+  /** Потоковая консоль: те же записанные запуски, что у run, но вывод отдаётся построчно, как его шлёт сервер. */
+  runStream: async (id: string, stdin: string, onEvent: (e: RunStreamEvent) => void): Promise<boolean> => {
+    const result = await mockApi.run(id, stdin);
+    onEvent({ event: 'compile', data: result.compile });
+    if (!result.compile.ok) return true;
+    const pause = () => new Promise((r) => setTimeout(r, 40));
+    for (const line of (result.stdout ?? '').split(/(?<=\n)/)) {
+      if (!line) continue;
+      await pause();
+      onEvent({ event: 'stdout', data: { text: line } });
+    }
+    if (result.stderr) onEvent({ event: 'stderr', data: { text: result.stderr } });
+    onEvent({ event: 'exit', data: { exitCode: result.exitCode ?? null, timeMs: result.timeMs ?? 0, timedOut: result.timedOut } });
+    return true;
   },
   /** Как GET /export в api (PR #31), но без тестов: в архиве текущий код и README о том, что это демо. */
   exportProject: (_id: string): Promise<ExportFile> => {

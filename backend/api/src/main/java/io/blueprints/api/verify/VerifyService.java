@@ -21,6 +21,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 /**
  * Дифференциальные тесты (D3): эталонная версия и текущая компилируются по одному разу и запускаются в песочнице
@@ -67,14 +69,24 @@ public class VerifyService {
         List<String> stdins = new ArrayList<>(inputs.stream().map(Input::stdin).toList());
         bench.forEach(b -> stdins.add(b.stdin()));
 
-        RunBatchResult expected = runner.runBatch(baseline, stdins, timeoutMs);
+        // Эталон и текущая версия — параллельно (два независимых javac+java, у runner 2 CPU). С бенчмарком —
+        // последовательно, иначе процессы делят процессор и время «до/после» искажается.
+        RunBatchResult expected;
+        RunBatchResult actual;
+        if (bench.isEmpty()) {
+            CompletableFuture<RunBatchResult> pending =
+                    CompletableFuture.supplyAsync(() -> runner.runBatch(current, stdins, timeoutMs));
+            expected = runner.runBatch(baseline, stdins, timeoutMs);
+            actual = join(pending);
+        } else {
+            expected = runner.runBatch(baseline, stdins, timeoutMs);
+            actual = expected.compile().ok() ? runner.runBatch(current, stdins, timeoutMs) : null;
+        }
         if (!expected.compile().ok()) {
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "baseline_compile_error",
                     "Эталонная версия " + baselineVersion + " не компилируется — сравнивать не с чем",
                     problems(expected));
         }
-        RunBatchResult actual = runner.runBatch(current, stdins, timeoutMs);
-
         if (!actual.compile().ok()) {
             String reason = "Текущая версия не компилируется" + firstProblem(actual);
             List<VerifyCase> cases = new ArrayList<>();
@@ -112,6 +124,17 @@ public class VerifyService {
         int passed = (int) cases.stream().filter(VerifyCase::ok).count();
         boolean preserved = !cases.isEmpty() && passed == cases.size();
         return new VerifyReport(baselineVersion, currentVersion, true, preserved, passed, cases.size(), cases, benchmark);
+    }
+
+    private static RunBatchResult join(CompletableFuture<RunBatchResult> future) {
+        try {
+            return future.join();
+        } catch (CompletionException e) {
+            if (e.getCause() instanceof RuntimeException cause) {
+                throw cause;
+            }
+            throw e;
+        }
     }
 
     List<Input> collectInputs(VerifyRequest r, List<String> savedInputs, Optional<CorpusInputs.Example> example) {
