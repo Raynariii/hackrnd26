@@ -499,8 +499,8 @@ class GraphOperationsTest {
                 .isInstanceOf(UnsupportedGraphOpException.class);
         assertThatThrownBy(() -> ops.apply(f.model, delete("g999999")))
                 .isInstanceOf(UnsupportedGraphOpException.class).hasMessageContaining("не найден");
-        assertThatThrownBy(() -> ops.apply(f.model, new GraphOp("move", "g1", null, null, null, null, null)))
-                .isInstanceOf(UnsupportedGraphOpException.class).hasMessageContaining("ещё не реализована");
+        assertThatThrownBy(() -> ops.apply(f.model, new GraphOp("rotate", "g1", null, null, null, null, null)))
+                .isInstanceOf(UnsupportedGraphOpException.class).hasMessageContaining("Неизвестная операция");
     }
 
     // ------------------------------------------------------------ члены класса (обзорный граф)
@@ -601,5 +601,255 @@ class GraphOperationsTest {
                 static int f(int x) {
                     return x;
                 }""");
+    }
+
+    // ------------------------------------------------------------ wrapIf / wrapLoop
+
+    private static GraphOp op(String name, List<String> ids, String code) {
+        return new GraphOp(name, null, ids, code, null, null, null);
+    }
+
+    private List<String> ids(Fixture f, String method, NodeKind kind, String... codeParts) {
+        return java.util.Arrays.stream(codeParts).map(c -> block(f, method, kind, c).id()).toList();
+    }
+
+    @Test
+    void wrapIfAroundSeveralStatements() {
+        Fixture f = new Fixture("""
+                    static int f(int x) {
+                        x++;
+                        // удвоение
+                        x *= 2;
+                        return x;
+                    }""");
+        String src = apply(f, op("wrapIf", ids(f, "f", NodeKind.OPERATION, "x++", "x *= 2"), "x > 0"));
+
+        assertThat(src).contains("""
+                    static int f(int x) {
+                        if (x > 0) {
+                            x++;
+                            // удвоение
+                            x *= 2;
+                        }
+                        return x;
+                    }""");
+        GraphNode cond = block(f, "f", NodeKind.CONDITION, "x > 0");
+        assertThat(blocks(f, "f", NodeKind.OPERATION)).allMatch(n -> cond.id().equals(n.parent()));
+    }
+
+    @Test
+    void wrapLoopWithShortHeaders() {
+        Fixture f = new Fixture("""
+                static int f(List<Integer> xs) {
+                    int s = 0;
+                    s += 1;
+                    return s;
+                }""");
+        apply(f, op("wrapLoop", ids(f, "f", NodeKind.OPERATION, "s += 1"), "int x : xs"));
+        String src = apply(f, op("wrapLoop", ids(f, "f", NodeKind.LOOP, "xs"), "s < 100"));
+
+        assertThat(src).contains("while (s < 100) {").contains("for (int x : xs) {");
+        assertThat(block(f, "f", NodeKind.LOOP, "xs").parent()).isEqualTo(block(f, "f", NodeKind.LOOP, "while").id());
+    }
+
+    @Test
+    void wrapRejectsGapsAndBadHeaders() {
+        Fixture f = new Fixture("""
+                static int f(int x) {
+                    x++;
+                    x--;
+                    x *= 2;
+                    return x;
+                }""");
+        assertThatThrownBy(() -> ops.apply(f.model, op("wrapIf", ids(f, "f", NodeKind.OPERATION, "x++", "x *= 2"), "x > 0")))
+                .isInstanceOf(UnsupportedGraphOpException.class).hasMessageContaining("подряд");
+        assertThatThrownBy(() -> ops.apply(f.model, op("wrapIf", ids(f, "f", NodeKind.OPERATION, "x++"), "x >")))
+                .isInstanceOf(UnsupportedGraphOpException.class).hasMessageContaining("условие");
+        assertThatThrownBy(() -> ops.apply(f.model, op("wrapLoop", ids(f, "f", NodeKind.OPERATION, "x++"), "if (x)")))
+                .isInstanceOf(UnsupportedGraphOpException.class);
+    }
+
+    // ------------------------------------------------------------ move
+
+    private static GraphOp move(List<String> ids, String targetId) {
+        return new GraphOp("move", null, ids, null, null, targetId, null);
+    }
+
+    @Test
+    void moveStatementsDownAndIntoContainer() {
+        Fixture f = new Fixture("""
+                    static int f(int x) {
+                        x++;
+                        x--;
+                        while (x > 10) {
+                            x /= 2;
+                        }
+                        return x;
+                    }""");
+        apply(f, move(ids(f, "f", NodeKind.OPERATION, "x++"), block(f, "f", NodeKind.LOOP, "while").id()));
+        String src = apply(f, move(ids(f, "f", NodeKind.OPERATION, "x--"), block(f, "f", NodeKind.OPERATION, "x /= 2").id()));
+
+        assertThat(src).contains("""
+                    static int f(int x) {
+                        while (x > 10) {
+                            x /= 2;
+                            x--;
+                        }
+                        x++;
+                        return x;
+                    }""");
+    }
+
+    @Test
+    void moveToStartAndUp() {
+        Fixture f = new Fixture("""
+                static int f(int x) {
+                    x++;
+                    if (x > 0) {
+                        x--;
+                    }
+                    return x;
+                }""");
+        String src = apply(f, move(ids(f, "f", NodeKind.OPERATION, "x--"), methodId(f, "f") + ":start"));
+
+        assertThat(src.indexOf("x--;")).isLessThan(src.indexOf("x++;"));
+        assertThat(src).contains("if (x > 0) {\n    }");
+    }
+
+    @Test
+    void moveIntoItselfIsRejected() {
+        Fixture f = new Fixture("""
+                static int f(int x) {
+                    while (x > 10) {
+                        x /= 2;
+                    }
+                    return x;
+                }""");
+        String loop = block(f, "f", NodeKind.LOOP, "while").id();
+        String inner = block(f, "f", NodeKind.OPERATION, "x /= 2").id();
+
+        assertThatThrownBy(() -> ops.apply(f.model, move(List.of(loop), inner)))
+                .isInstanceOf(UnsupportedGraphOpException.class).hasMessageContaining("внутрь самого себя");
+        assertThatThrownBy(() -> ops.apply(f.model, move(List.of(inner), overviewNode(f, NodeKind.METHOD, "f").id())))
+                .isInstanceOf(UnsupportedGraphOpException.class);
+    }
+
+    @Test
+    void moveMethodAfterAnotherMember() {
+        Fixture f = new Fixture("""
+                static int a() {
+                    return 1;
+                }
+
+                static int b() {
+                    return 2;
+                }""");
+        String src = apply(f, move(List.of(overviewNode(f, NodeKind.METHOD, "a").id()), overviewNode(f, NodeKind.METHOD, "b").id()));
+
+        assertThat(src.indexOf("int b()")).isLessThan(src.indexOf("int a()"));
+    }
+
+    // ------------------------------------------------------------ extractMethod
+
+    private static GraphOp extract(List<String> ids, String name) {
+        return new GraphOp("extractMethod", null, ids, null, null, null, name);
+    }
+
+    @Test
+    void extractMethodWithParametersAndReturnedVariable() {
+        Fixture f = new Fixture("""
+                    static int f(List<Integer> xs, int k) {
+                        int base = k * 2;
+                        int sum = 0;
+                        for (int x : xs) {
+                            sum += x * base;
+                        }
+                        System.out.println(sum);
+                        return sum;
+                    }""");
+        String src = apply(f, extract(List.of(block(f, "f", NodeKind.VARIABLE, "sum = 0").id(),
+                block(f, "f", NodeKind.LOOP, "xs").id()), "weightedSum"));
+
+        assertThat(src).contains("    int base = k * 2;\n    int sum = weightedSum(xs, base);\n    System.out.println(sum);");
+        assertThat(src).contains("""
+                    private static int weightedSum(List<Integer> xs, int base) {
+                        int sum = 0;
+                        for (int x : xs) {
+                            sum += x * base;
+                        }
+                        return sum;
+                    }""");
+    }
+
+    @Test
+    void extractVoidInstanceMethodAndAssignedOuterVariable() {
+        Fixture f = new Fixture("""
+                int total;
+                void f(int n) throws IOException {
+                    System.out.println("start " + n);
+                    total += n;
+                }
+                int g(int n) {
+                    int acc = 0;
+                    acc += n;
+                    acc *= 2;
+                    return acc;
+                }""");
+        apply(f, extract(ids(f, "f", NodeKind.CALL, "start"), "logStart"));
+        String src = apply(f, extract(ids(f, "g", NodeKind.OPERATION, "acc += n", "acc *= 2"), "grow"));
+
+        assertThat(src).contains("logStart(n);").contains("private void logStart(int n) throws IOException {");
+        assertThat(src).contains("acc = grow(acc, n);").contains("private int grow(int acc, int n) {");
+    }
+
+    @Test
+    void extractRejectsReturnJumpsAndSeveralOutputs() {
+        Fixture f = new Fixture("""
+                static int f(int x) {
+                    int a = x + 1;
+                    int b = x + 2;
+                    for (int i = 0; i < 3; i++) {
+                        if (i == a) {
+                            break;
+                        }
+                    }
+                    while (x > 0) {
+                        x--;
+                        if (x == 5) {
+                            break;
+                        }
+                    }
+                    if (x < 0) {
+                        return -1;
+                    }
+                    return a + b;
+                }""");
+        assertThatThrownBy(() -> ops.apply(f.model, extract(ids(f, "f", NodeKind.VARIABLE, "a = x + 1", "b = x + 2"), "ab")))
+                .isInstanceOf(UnsupportedGraphOpException.class).hasMessageContaining("несколько переменных");
+        assertThatThrownBy(() -> ops.apply(f.model, extract(ids(f, "f", NodeKind.CONDITION, "x < 0"), "neg")))
+                .isInstanceOf(UnsupportedGraphOpException.class).hasMessageContaining("return");
+        assertThatThrownBy(() -> ops.apply(f.model, extract(ids(f, "f", NodeKind.CONDITION, "x == 5"), "stop")))
+                .isInstanceOf(UnsupportedGraphOpException.class).hasMessageContaining("break");
+        assertThatThrownBy(() -> ops.apply(f.model, extract(ids(f, "f", NodeKind.VARIABLE, "a = x + 1"), "keep")))
+                .isInstanceOf(UnsupportedGraphOpException.class).hasMessageContaining("уже есть");
+        assertThatThrownBy(() -> ops.apply(f.model, extract(ids(f, "f", NodeKind.VARIABLE, "a = x + 1"), "1bad")))
+                .isInstanceOf(UnsupportedGraphOpException.class).hasMessageContaining("имя");
+        // break внутри своего цикла выносить можно
+        String src = apply(f, extract(ids(f, "f", NodeKind.LOOP, "int i = 0"), "scan"));
+        assertThat(src).contains("scan(a);").contains("private static void scan(int a) {");
+    }
+
+    @Test
+    void extractFromLoopBodyPassesLoopVariable() {
+        Fixture f = new Fixture("""
+                static void f(String[] names) {
+                    for (int i = 0; i < names.length; i++) {
+                        String n = names[i];
+                        System.out.println(i + ": " + n.toUpperCase());
+                    }
+                }""");
+        String src = apply(f, extract(ids(f, "f", NodeKind.CALL, "toUpperCase"), "print"));
+
+        assertThat(src).contains("print(i, n);").contains("private static void print(int i, String n) {");
     }
 }

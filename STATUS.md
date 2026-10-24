@@ -37,7 +37,11 @@
       выражения из `Finding.nodeIds` (→ его оператор). Правка идёт текстом строго в границах AST-узлов, затем файл
       перепарсивается: нетронутый код байт-в-байт, вставка выровнена по соседям (табы, CRLF), ошибка → 422 без
       изменения модели. Каждый тест проверяет, что результат компилируется javac
-- [ ] операции: `move`, `wrapIf`, `wrapLoop`, `extractMethod`
+- [x] операции `wrapIf`, `wrapLoop`, `move`, `extractMethod` (ещё 11 тестов, итого 38; PR — feat/core-graph-ops-2):
+      выделение — подряд идущие операторы одного блока (`nodeIds`, порядок не важен); `move` → `targetId` по правилам
+      insertAfter, члены класса — после другого члена; `extractMethod` — private (static, если исходный static) метод
+      `name`: параметры — читаемые локальные переменные, возврат — единственная переменная, нужная дальше;
+      `throws` и type-параметры копируются. Отказ (422): return / break / continue наружу, >1 выходной переменной, `var`
 - [ ] round-trip тест на всём `corpus/`
 - [x] откат на pretty-print, если LexicalPreservingPrinter падает (G6): `CodeGenerator.printReport` → `reformatted`
       (список файлов, напечатанных без сохранения форматирования); операции графа LPP для правок не используют
@@ -46,7 +50,8 @@
 **Для фронта (роль 3), `POST /graph/ops`:** `editNode` у condition/loop/switch меняет только заголовок
 (`code` = `x > 0` или `int i = 0; i < n; i++`), у case — метки (`1, 2` / `default`), у catch — параметр.
 `insertAfter` после `<метод>:start` / case / catch / finally — в начало их тела, после контейнера — после всей
-конструкции. Палитра: `kind` + короткий `code` (`condition` + `x > 0` → `if (x > 0) {}`, `loop` + `x : xs` →
+конструкции. `wrapIf`/`wrapLoop`/`extractMethod` берут `nodeIds` (подряд в одном блоке) + `code` / `name`,
+`move` — `nodeIds` + `targetId`. Палитра: `kind` + короткий `code` (`condition` + `x > 0` → `if (x > 0) {}`, `loop` + `x : xs` →
 for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`. После операции id меняются — перезапросите граф.
 **Для роли 4:** `CodeGenerator.printReport(model).reformatted()` можно отдать в ответе как предупреждение (G6).
 **Блокеры:** —
