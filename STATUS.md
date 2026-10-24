@@ -105,6 +105,7 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
       `Analyzer` выставляет `Fix.autoApplicable` по `Fixers.supports(finding)`, а не по правилу;
       пакет `decompose/` для внутренностей `Decomposer` (сам `Decomposer` — фасад).
       Это единственная задача, которой разрешено трогать файлы 2b и 2c. До её слияния 2b/2c только добавляют новые файлы.
+      (в работе: 2a, ветка `feat/analysis-2a-registries`)
 - [ ] P1 Big O на фрагмент (выделение блоков в блок-схеме), не только на метод — `PLAN.md` §4
 - [ ] P1 стоимость Stream API и лямбд в `CostModel` (бонус scope): `stream()…collect` / `sorted()` / `anyMatch` в цикле
 - [ ] P1 прогон по монолитам организаторов, как только они появятся в `corpus/` (G8): нет падений и явных ложных находок
