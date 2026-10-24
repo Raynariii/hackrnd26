@@ -12,6 +12,7 @@ public final class ProjectSession {
     private final String id;
     private final String name;
     private final List<List<SourceFile>> versions = new ArrayList<>();
+    private final List<String> savedInputs = new ArrayList<>();
     private ProjectModel model;
 
     public ProjectSession(String id, String name, List<SourceFile> files, ProjectModel model) {
@@ -55,5 +56,17 @@ public final class ProjectSession {
         }
         versions.add(List.copyOf(files));
         model = newModel;
+    }
+
+    /** stdin из запусков пользователя: verify переиспользует их как дифф-тесты. */
+    public synchronized void rememberInput(String stdin) {
+        String value = stdin == null ? "" : stdin;
+        if (!savedInputs.contains(value) && savedInputs.size() < 20) {
+            savedInputs.add(value);
+        }
+    }
+
+    public synchronized List<String> savedInputs() {
+        return List.copyOf(savedInputs);
     }
 }
