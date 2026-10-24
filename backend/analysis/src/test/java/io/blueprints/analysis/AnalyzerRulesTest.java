@@ -349,6 +349,28 @@ class AnalyzerRulesTest {
     }
 
     @Test
+    void magicNumberPointsToItsConditionInElseIfChain() {
+        String source = """
+                class A {
+                    void f(int score) {
+                        if (score > 80) {
+                            System.out.println("a");
+                        } else if (score > 60) {
+                            System.out.println("b");
+                        } else if (score > 40) {
+                            System.out.println("c");
+                        }
+                    }
+                }
+                """;
+
+        List<Finding> found = findings("magic-number", source);
+
+        assertThat(found).extracting(Finding::startLine).containsExactly(3, 5, 7);
+        assertThat(found).extracting(Finding::endLine).containsExactly(3, 5, 7);
+    }
+
+    @Test
     void ignoresTechnicalSmallNumbers() {
         String source = """
                 class A {
