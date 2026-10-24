@@ -68,6 +68,7 @@
       членов есть блок-схема, `:start` для insertAfter и рёбра call (`Members` — общее правило). Запрос роли 3 [3→1]
       (PR — feat/core-integration-3). Проверено на 6 монолитах `feat/corpus-monoliths` роли 4: разбор, печать
       байт-в-байт, графы всех методов, `raw` нет
+**Для фронта (роль 3):** `GET /export` → zip (кнопка «Экспорт»: скачать blob, имя из `Content-Disposition`).
 **Для фронта (роль 3):** находка → блок: блок, у которого `id` или `meta.covers` содержит любой из `Finding.nodeIds`.
 `start` блок-схемы покрывает id метода (находки уровня метода, например long-method).
 **Для фронта (роль 3), `POST /graph/ops`:** `editNode` у condition/loop/switch меняет только заголовок
@@ -206,6 +207,7 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 - [ ] палитра блоков (drag&drop) → `graph/ops` — режется первой из фронта (LEAD.md §5, п. 4 лестницы)
 - [x] экран проверки: N/N тестов, «Поведение совпадает», график времени до/после (PR #8; `POST /verify` роли 4 влит в #19; моки `?verify=fail` / `?verify=nocompile`)
 - [x] Monaco без CDN (локальная загрузка для офлайн-демо) (PR #2)
+- [x] за роль 4 (с согласия разработчика): `docs/scope.md` — матрица scope 1–4 + бонус (G9), разделы «Поддержанный scope» и «Ограничения» в `docs/architecture.md`; пробелы визуализации — запрос роли 1 в Notion (PR #33)
 **Блокеры:** `npm test` (node --test) пока не в CI — запрос роли 4. Рендер проверен на настоящих блок-схемах ядра (PR #5):
 `npm run dev:mock` → `?demo=flow` / `?demo=orders`. Правка на графе проверена на записанных операциях настоящего ядра: `?demo=main`.
 **Дальше:** сквозная проверка с живым api (`docker compose up`); палитра drag&drop — если останется время.
@@ -223,25 +225,53 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
       `baseline_compile_error`. `benchmark=true` → `benchmarkInputs` или `bench-<n>.txt` из корпуса, время до/после.
       Сквозная проверка (api + runner, `00-hello`): эквивалентная правка — 8/8 ✓ за ~2,7 с; изменённая логика и
       исключение — точный дифф. В compose корпус монтируется в api (`./corpus:/corpus:ro`)
-- [x] `POST /fixes/{findingId}` (запрос роли 2, PR — `feat/api-fixes-decompose`): `FixEngine.apply` → **quality gate**
+- [x] `POST /fixes/{findingId}` (запрос роли 2, PR #21, #23): `FixEngine.apply` → **quality gate**
       (`QualityGate`: новая версия vs текущая через verify — компиляция + дифф-тесты) → коммит новой версии.
       Ответ `ChangeResult` = state + unified diff + `description` + `verify` (отчёт gate). Ошибки 422:
       `fix_not_applicable`, `quality_gate_failed` (сессия не меняется), `parse_error`; 409 — устаревшая версия.
       Сквозная проверка на `OrdersMonolith`: StringBuilder, for-each по LinkedList, константы — 3 исправления подряд, gate 6/6
 - [x] `POST /decompose` (запрос роли 2): `Decomposer.propose` → `proposal` + `notes`; `apply=true` → 501 (G7)
-- [ ] bench-входы `corpus/*/inputs/bench-*.txt` растущего размера (G4)
+- [x] bench-входы `corpus/*/inputs/bench-<n>.txt` растущего размера (G4, PR #28): `corpus/gen_bench.py`
+      (детерминированно, n = 2000/4000/8000, у демо 5000/10000/20000), подобраны под заложенные O(n²)
+- [x] `POST /decompose` `apply=true` (запрос 2c, P1, PR #55): `Decomposer.apply` на копии →
+      quality gate (текущая версия vs разбитая) → новая версия; ответ `proposal` + `notes` (предложения и применения) +
+      `result: ChangeResult` (state, diff с новыми файлами, description, verify). 422 `decompose_not_applicable` /
+      `quality_gate_failed`, 409 — устаревшая версия. Песочница: тестовый монолит → Main + Parser/Analyzer/Optimizer,
+      gate 7/7, verify v1 vs v2 7/7; корпус: `04-text-stats` ✓, 02/03/05 — gate ловит некомпилируемый результат (запрос 2c)
 - [ ] монолиты организаторов → `corpus/` (G8, как только лид их получит)
-- [ ] `docs/scope.md`: матрица «конструкция → граф / генерация / тест» по разделам 1–4 + бонус (G9)
-- [ ] фаззинг статических методов через генерируемую обвязку (G5, P2)
-- [ ] генерация JUnit golden-master + `GET /export` (zip)
-- [ ] бенчмарк n, 2n, 4n
-- [ ] SSE-консоль для `/run` (опц.)
-- [ ] корпус: 5–8 монолитов ~1000 строк, покрытие scope 1–4 (+ бонус)
-- [ ] `docs/`: архитектура, поддержанный scope, ограничения; README для жюри
-- [ ] проверить `docker compose up --build` с нуля
+- [x] `docs/scope.md`: матрица «конструкция → граф / генерация / где проверено» по разделам 1–4 + бонус (G9, PR #36)
+- [x] бенчмарк n, 2n, 4n: `POST /verify {"benchmark": true}` — время до/после на `bench-<n>.txt` (n, 2n, 4n)
+- [x] фаззинг статических методов через генерируемую обвязку (G5, PR #43, поверх #31): `FuzzHarness`
+      роли 1 → обвязка добавляется к обеим версиям, run-batch с `mainClass`, вывод сравнивается одним случаем, в
+      `mismatch` — метод, на котором разошлось. Включено по умолчанию (`fuzz=true`) в verify и quality gate. На корпусе
+      01/03/04/05: 7–26 методов × 20 вызовов, детерминированно, verify ~6 с. Ловит то, до чего stdin не дотягивается:
+      `03-bank`, изменён `commission()` → «метод commission: stdout: строка 478 …»
+- [x] генерация JUnit golden-master + `GET /export` (zip) (PR #31): Maven-проект с текущими исходниками,
+      `original/` (v1), `changes.diff`, `GoldenMasterTest` (JUnit 5, запускает текущую версию процессом и сверяет
+      stdout/stderr/exit с эталонами v1 после нормализации verify), `golden/NN.*`, `verify-report.json`, `README.md`
+      с таблицей результатов. Заголовки `X-Verify-Passed`, `X-Behavior-Preserved`. Проверено: `06-demo-warehouse`
+      после трёх исправлений → архив → `mvn test` — **9/9 зелёных**
+- [x] verify: эталон и текущая версия запускаются параллельно (gate ~3 с вместо ~4 с); с бенчмарком — последовательно
+- [x] `POST /advice` (запрос роли 2d, P2, PR #40): находка + код её метода (≤ 200 строк) →
+      `ClaudeAdvisor`; без `ANTHROPIC_API_KEY` → 204, сбой советчика → 502 `llm_unavailable`. `ANTHROPIC_MODEL` в compose
+- [x] `docker compose up` с нуля + полный путь демо (см. «Журнал интеграций», 24.10 ~16:20)
+- [x] `POST /complexity` (запрос 2a, P1, PR #42): `{version?, nodeIds}` → `{version, current}` —
+      Big O выделенных блоков блок-схемы через `MetricsCalculator.complexityOf`; 409 при устаревшей версии, 400 без id
+- [x] корпус: 6 монолитов (~3000 строк) + `00-hello`, разделы 1–4 + бонус, у каждого `NOTES.md` (scope + дефекты)
+      и 3–5 входов (PR #28). **`06-demo-warehouse` — пример для демо:** три авто-исправления
+      O(n²) → O(n), gate 9/9 на каждом, verify v1 vs v4 12/12, бенчмарк ×1,5 / ×2,3 / ×6,5 (n = 5k/10k/20k).
+      `CorpusSmokeTest` (runner): каждый пример компилируется, все входы детерминированы. `corpus/check.sh` — вручную
+- [x] примеры ~1000 строк: `01-shop-orders` — 1089 (возвраты, отзывы, поставки, лояльность, ABC-анализ, прогноз запасов),
+      `03-bank` — 950 (вклады, скоринг, обороты счёт × месяц, курсы, автоплатежи, сравнение кредитов); по новому входу у каждого
+- [x] SSE-консоль (PR #56): `POST /projects/{id}/run/stream` → события `compile` / `stdout` / `stderr` /
+      `exit` / `error` по мере появления (runner `POST /internal/run-stream`: процесс с потоковым чтением, те же таймаут,
+      лимит вывода и защита `mainClass`). Проверено: строки программы со `sleep` приходят через ~0,7 с каждая, а не в конце.
+      **Для фронта (роль 3):** `fetch` + `ReadableStream` (EventSource не умеет POST), разбор `event:`/`data:`; тип `RunStreamEvent`
+- [x] `docs/architecture.md` (модули, поток данных, verify/gate/экспорт, песочница, тесты, **ограничения**) и README для жюри:
+      запуск, сценарий демо на `06-demo-warehouse` (UI и curl — проверен буквально), таблица «что сдаём» (PR #36)
 **Для фронта (роль 3):** `POST /verify` работает по контракту `VerifyReport` (тело `{}` допустимо). Готовы: `cases[].name`
 («corpus/…/01.txt», «Вход №1», «Граничный: …», «Бенчмарк: n = …»), `mismatch` — текст для панели «Тесты»,
-`benchmark[]` — для графика до/после (`{"benchmark": true}`; пока bench-входы есть только при передаче `benchmarkInputs`).
+`benchmark[]` — для графика до/после (`{"benchmark": true}`; bench-входы берутся из корпуса, демо — `06-demo-warehouse`).
 **Блокеры:** —
 
 ## Запросы на изменения (контракты и чужие зоны)
@@ -249,12 +279,17 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 
 | Кто просит | Что | Кому | Статус |
 |---|---|---|---|
-| Роль 2 | `POST /api/projects/{id}/fixes/{findingId}`: вызвать `io.blueprints.analysis.FixEngine#apply(files, findingId)`, закоммитить новую версию и вернуть `ChangeResult` (state + diff); `FixNotApplicableException` → 409/422 с текстом причины. Контракт и контроллер — зона роли 4. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
+| Роль 2 | `POST /api/projects/{id}/fixes/{findingId}`: вызвать `io.blueprints.analysis.FixEngine#apply(files, findingId)`, закоммитить новую версию и вернуть `ChangeResult` (state + diff); `FixNotApplicableException` → 409/422 с текстом причины. Контракт и контроллер — зона роли 4. | Роль 4 | Сделано — PR #21, #23 |
 | Роль 4 | В `GET /diagnostics` у `collection-lookup-in-loop` стоит `fix.autoApplicable=true`, но `FixEngine.apply` отказывает (коллекция меняется в цикле — `00-hello`, `OrdersMonolith`). Кнопка «Применить» в UI обещает то, чего нет: выставлять `autoApplicable` по тем же проверкам, что и `apply`. | Роль 2 | Сделано — PR #29: `autoApplicable` = `Fixers.supports(model, finding)` (те же проверки, что и `apply`), текст отказа у 422 совпадает |
-| Роль 2 | `POST /api/projects/{id}/decompose`: `new Decomposer().propose(session.model())` → `DecomposeResult.proposal` (apply=false, v1); при apply=true пока 501 `not_implemented`. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
-| Роль 2 | `POST /api/projects/{id}/decompose` с `apply=true` (сейчас 501): `Decomposer.Applied applied = new Decomposer().apply(beforeFiles)` → quality gate как у `/fixes` (verify baseline vs `applied.files()`) → закоммитить `applied.files()` и вернуть `DecomposeResult.proposal` + `ChangeResult` + `applied.notes()`; `FixNotApplicableException` → 422 с текстом. Контракт уже есть (`DecomposeRequest.apply`), новых полей не нужно. Библиотечная часть готова (PR #44). | Роль 4 | Открыт (P1) |
-| Роль 2 | (опц., P2) `POST /api/projects/{id}/advice` с `{findingId}`: `ClaudeAdvisor.fromEnvironment().advise(...)` по коду метода/фрагмента находки; без `ANTHROPIC_API_KEY` — `enabled=false` → 204; применение совета — только через quality gate (как `/fixes`). Заодно `ANTHROPIC_API_KEY=` в `.env.example` (опц.). Контракт — зона роли 4. | Роль 4 | Открыт (P2) |
-| Роль 2 | (опц., P1) `POST /api/projects/{id}/complexity` с `{version, nodeIds}`: `new MetricsCalculator().complexityOf(session.model(), nodeIds).toString()` → `{current}` для выделенных блоков блок-схемы (фронт уже умеет выделять блоки для `graph/ops`). Библиотечная часть готова (PR #37). Контракт — зона роли 4. | Роль 4 | Открыт (P1) |
+| Роль 2 | `POST /api/projects/{id}/decompose`: `new Decomposer().propose(session.model())` → `DecomposeResult.proposal` (apply=false, v1); при apply=true пока 501 `not_implemented`. | Роль 4 | Сделано — PR #21, #23 |
+| Роль 2 | `POST /api/projects/{id}/decompose` с `apply=true` (сейчас 501): `Decomposer.Applied applied = new Decomposer().apply(beforeFiles)` → quality gate как у `/fixes` (verify baseline vs `applied.files()`) → закоммитить `applied.files()` и вернуть `DecomposeResult.proposal` + `ChangeResult` + `applied.notes()`; `FixNotApplicableException` → 422 с текстом. Контракт уже есть (`DecomposeRequest.apply`), новых полей не нужно. Библиотечная часть готова (PR #44). | Роль 4 | Сделано — PR #55 |
+| Роль 4 | **`Decomposer.apply` даёт некомпилируемый код на 3 из 6 примеров корпуса** — quality gate отклоняет (422 `quality_gate_failed`, сессия цела), но кнопка «Применить разбиение» не сработает. (1) `02-library`, `03-bank`: группа называется `Main`, как исходный класс → новый `Main.java` затирает исходный, вложенные типы пропадают (`Main.LibraryException`, `Main.BankAccount`: cannot find symbol). Нужно: группу с именем исходного класса не выделять (или переименовывать). (2) `03-bank`: вызовы перенесённых методов из оставшегося кода не квалифицируются (`formatMoney(...)` в `Main.loan`). (3) `05-course-grades`: вложенный тип в позиции выражения не квалифицируется (`Mark.of(p)`, `Mark.FAIL` в `Analyzer`; квалифицируются только позиции типа). Работает: `04-text-stats` (Parser/Analyzer/Optimizer, gate 6/6). `01-shop-orders` и `06` после #53 → «нечего декомпозировать», хотя в STATUS 2c 01 указан как пример. Воспроизведение: `POST /decompose {apply:true}` на `corpus/<пример>/Main.java`. | Роль 2 (2c) | Открыт |
+| Роль 2 | (опц., P2) `POST /api/projects/{id}/advice` с `{findingId}`: `ClaudeAdvisor.fromEnvironment().advise(...)` по коду метода/фрагмента находки; без `ANTHROPIC_API_KEY` — `enabled=false` → 204; применение совета — только через quality gate (как `/fixes`). Заодно `ANTHROPIC_API_KEY=` в `.env.example` (опц.). Контракт — зона роли 4. | Роль 4 | Сделано — PR #40 |
+| Роль 2 | (опц., P1) `POST /api/projects/{id}/complexity` с `{version, nodeIds}`: `new MetricsCalculator().complexityOf(session.model(), nodeIds).toString()` → `{current}` для выделенных блоков блок-схемы (фронт уже умеет выделять блоки для `graph/ops`). Библиотечная часть готова (PR #37). Контракт — зона роли 4. | Роль 4 | Сделано — PR #42 |
+| Роль 4 | **Баг `FixEngine.forEachInsteadOfIndex`:** не проверяет, что цикл идёт с 0 до `size()` с шагом 1. В `corpus/01-shop-orders` (`printAuditTail`: `for (int i = from; …)`) for-each печатает весь журнал вместо хвоста — **quality gate отклонил** исправление (поведение разошлось), но кнопка обещает его. Нужна проверка: init = 0, условие `i < x.size()`, update `i++`. | Роль 2 | Открыт |
+| Роль 4 | Анализатор не находит заложенные дефекты: `duplicate-code` (`01-shop-orders`: `totalQuantityForCity`/`…Category`; `02-library`: ветки `fineFor`) и `linked-list-index-access` у поля объекта (`02-library`: `b.waitList.get(i)`). | Роль 2 | Сделано — PR #39 (почти-копии и LinkedList-поле) |
+| Роль 4 | **`MetricsCalculator.complexityOf`: оператор внутри циклов даёт O(1).** `estimate` учитывает глубину циклов-предков только для узлов-циклов и вызовов, поэтому `count++` (или `if`) во вложенном цикле → O(1), хотя по javadoc «блок внутри двух циклов исполняется O(n²) раз». Выделение внутреннего цикла даёт O(n²) верно. Пример — `ComplexityApiTest` (api). | Роль 2 (2a) | Открыт |
+| Роль 4 | Обзорный граф пропускает члены класса: `static`/instance-блоки инициализации (`InitializerDeclaration`), компактный конструктор record (`CompactConstructorDeclaration`), компоненты record, константы enum (с телами). Код сохраняется, но в графе их нет — в `docs/scope.md` отмечено 🟡. | Роль 1 | Сделано — PR #46 (компоненты record — пока нет) |
 
 ## Журнал интеграций
 | Когда | Результат | Что сломалось |
@@ -262,3 +297,4 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 | 24.10 ~09:45 (роль 1, локально: runner + api + фронт `feat/frontend-line-node`) | ✅ загрузка `ScopeSample.java` → overview (26 contains + 16 call) → блок-схемы всех 19 методов → диагностика (5 находок, все привязаны к узлам) → запуск в runner → 9 операций графа подряд (insertAfter, extractMethod, wrapIf, wrapLoop, editNode ×3, move) → повторный запуск: **вывод совпал**. Фронт рисует overview и блок-схемы на реальных данных без ошибок в консоли | 🔴 `POST /verify` — 501 (роль 4): шаг «сравнение» есть только вручную. 🟡 `wrapIf/wrapLoop` вокруг объявления, нужного дальше, ломали компиляцию; тип в `extractMethod` печатался без пробелов — исправлено (роль 1). 🟡 Фронт: overview на 36 узлов — мелкая плоская лента, рёбра call накладываются; в `client.ts` нет `graph/ops` — правка на графе из UI пока недоступна (роль 3). 🟡 Вывод javac/java в runner может начинаться со строки `Picked up JAVA_TOOL_OPTIONS`, если переменная задана в окружении — нормализация verify должна её отбрасывать (роль 4) |
 | 24.10 ~12:30 (роль 1, локально: runner + api из main) | ✅ **полный путь через api**: `ScopeSample.java` → `/verify` v1↔v1 8/8 → 4 операции графа (extractMethod, wrapIf, move, insertAfter) → `/verify` 8/8 «поведение совпадает» → editNode с изменением поведения → `/verify` 0/8 с точной строкой расхождения («строка 4: ожидалось «3workday3», получено «3always3»») → `/fixes` (magic-number) применился. Масштаб: синтетический монолит 1300 строк — граф 0,16 с, диагностика 0,22 с, операция 1,2 с, `/verify` 8 с на 6 входах | 🟡 Фронт: в `client.ts` всё ещё нет `graph/ops` — правка на графе только через api (роль 3). 🟡 `/verify` fuzz=true пока гоняет только граничные stdin-входы — `FuzzHarness` (PR #20) не подключён (роль 4, запрос в Notion). 🟡 В `corpus/` только `00-hello` (25 строк) — нужны монолиты ~1000 строк (роль 4 / G8) |
 | 24.10 ~16:00 (роль 1, локально: runner + api + **фронт из main**, Playwright) | ✅ **полный путь через UI** на `01-shop-orders` (662 строки, из ветки роли 4 `feat/corpus-monoliths`): импорт → обзор (96 узлов, рамки классов, анонимный `Comparator` с `compare`) → двойной клик `countCancelled` → блок-схема → выбор цикла → «Обернуть в if» (`true`) → граф и код обновились (v2, отступы ровные) → «Проверить» → **«Поведение совпадает», 6 из 6**. Ошибок в консоли нет. Ядро: все 6 монолитов корпуса проходят round-trip, графы всех методов, `raw` нет | 🟡 Корпус 01–06 ещё не в main (ветка роли 4) — `/verify` на нём берёт только 6 граничных входов, без `inputs/*.txt` примера. 🟡 Фаззинг статических методов (`FuzzHarness`, PR #20) в `/verify` не подключён (роль 4) |
+| 24.10 ~16:20 (роль 4: свежий клон `main` + #28 корпус + #31 export + #36 docs; `docker compose up` — api/runner/web из образов с теми же runtime-стадиями) | ✅ через nginx :3000: загрузка `06-demo-warehouse` → обзор (23 узла) → блок-схема `reconcile` → 3 находки O(n²) → 3 исправления (gate 9/9, ~3 с каждое) → `insertAfter` на графе → запуск → verify: правка на графе намеренно меняет вывод — **7 случаев красные с точным диффом**, бенчмарк n = 20000: 1583 → 399 мс → export zip. Изоляция runner: сеть и DNS недоступны, запись в `/app` и `/etc` запрещена, пользователь `sandbox`. UI: обзор, выбор метода, подсветка кода, «Проблемы (7)» — без ошибок в консоли | 🟡 Сборка образов внутри облачной песочницы агента не ходит в Maven Central / npm (ограничение окружения агента, не проекта — в CI `compose build` зелёный); jar и `dist` собраны на хосте. 🟡 Обзор на 23 узла мелкий (роль 3, PR #18) |
