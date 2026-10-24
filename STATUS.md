@@ -24,21 +24,53 @@
 **Блокеры:** —
 
 ## Роль 1 — ядро Java ↔ граф
-- [ ] `methodFlow`: блок-схема метода (variable, condition, loop, call, operation, return, switch/case, break/continue, try/catch/finally, throw)
+- [x] `methodFlow`: блок-схема метода и конструктора (`MethodFlowBuilder`): variable, condition (Да/Нет), loop
+      (for / for-each / while / do-while, `loopBody/loopBack/loopExit`, `while(true)` без выхода), call, operation,
+      return, switch/case (провал без break, стрелочные case, «нет совпадений»), break/continue с метками,
+      try-with-resources/catch/finally, throw. `parent` = контейнер (цикл, ветка условия, case, try, catch, finally).
+      `meta.covers` — id выражений внутри блока: по нему `Finding.nodeIds` привязываются к блокам. 17 тестов (PR #5)
 - [ ] overview: рёбра `call` (SymbolSolver, с откатом на имена)
-- [ ] узел `raw` для неподдерживаемых конструкций
-- [ ] операции: `editNode`, `insertAfter`, `delete`, `move`, `wrapIf`, `wrapLoop`, `extractMethod`
+- [x] узел `raw` для неподдерживаемых конструкций в блок-схеме (локальные классы, synchronized, yield; сбой разбора
+      оператора откатывается в `raw`, а не роняет граф) (PR #5)
+- [x] операции `editNode`, `insertAfter`, `delete` (`DefaultGraphOperations`, 27 тестов; PR — feat/core-graph-ops):
+      цели — блоки блок-схемы (операторы, case, catch, finally, `:start`), члены обзора (метод, поле, тип) и id
+      выражения из `Finding.nodeIds` (→ его оператор). Правка идёт текстом строго в границах AST-узлов, затем файл
+      перепарсивается: нетронутый код байт-в-байт, вставка выровнена по соседям (табы, CRLF), ошибка → 422 без
+      изменения модели. Каждый тест проверяет, что результат компилируется javac
+- [ ] операции: `move`, `wrapIf`, `wrapLoop`, `extractMethod`
 - [ ] round-trip тест на всём `corpus/`
-- [ ] откат на pretty-print, если LexicalPreservingPrinter падает на правке (G6)
+- [x] откат на pretty-print, если LexicalPreservingPrinter падает (G6): `CodeGenerator.printReport` → `reformatted`
+      (список файлов, напечатанных без сохранения форматирования); операции графа LPP для правок не используют
+**Для фронта (роль 3):** находка → блок: блок, у которого `id` или `meta.covers` содержит любой из `Finding.nodeIds`.
+`start` блок-схемы покрывает id метода (находки уровня метода, например long-method).
+**Для фронта (роль 3), `POST /graph/ops`:** `editNode` у condition/loop/switch меняет только заголовок
+(`code` = `x > 0` или `int i = 0; i < n; i++`), у case — метки (`1, 2` / `default`), у catch — параметр.
+`insertAfter` после `<метод>:start` / case / catch / finally — в начало их тела, после контейнера — после всей
+конструкции. Палитра: `kind` + короткий `code` (`condition` + `x > 0` → `if (x > 0) {}`, `loop` + `x : xs` →
+for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`. После операции id меняются — перезапросите граф.
+**Для роли 4:** `CodeGenerator.printReport(model).reformatted()` можно отдать в ответе как предупреждение (G6).
 **Блокеры:** —
 
 ## Роль 2 — анализ и оптимизация
-- [ ] правила: вложенные циклы по одной коллекции, `contains/indexOf/remove` в цикле, конкатенация строк в цикле,
-      `LinkedList.get(i)` в цикле, глубокая вложенность, дублирование, пустой `catch`, god-class
-- [ ] метрики: цикломатическая сложность, вложенность, Big O на метод/фрагмент
-- [ ] авто-исправления для топ-4 правил + `POST /fixes/{id}` (в api — согласовать с ролью 4)
-- [ ] декомпозиция монолита + `POST /decompose` — v1: перенос только static-методов и static-вложенных классов (G7)
+- [x] правила (10, `backend/analysis/.../rules`): вложенные циклы по одной коллекции, `contains/indexOf/remove` в цикле,
+      конкатенация строк в цикле, `LinkedList.get(i)` в цикле, глубокая вложенность/цикломатика, длинный метод,
+      дублирование (нормализованные фрагменты), пустой `catch`, «магические» числа, god-class — 18 тестов
+- [x] метрики: цикломатическая сложность, максимальная вложенность, Big O на метод (число вложенных циклов ×
+      таблица стоимости операций коллекций: `ArrayList.contains` O(n), `HashSet.contains` O(1), `TreeMap.get` O(log n),
+      сортировка O(n log n)); `Finding.complexity` = «до/после» для всех найденных дефектов
+- [x] авто-исправления для 4 правил (`FixEngine`): HashSet-индекс вместо `List.contains`, `StringBuilder` вместо `+=`,
+      константа вместо «магического» числа, for-each вместо `LinkedList.get(i)`; каждая правка проверяется javac в тесте,
+      отказ от небезопасных случаев (переменная объявлена в цикле, коллекция меняется, строку читают в цикле)
+- [ ] `POST /fixes/{id}` в api: подключить `FixEngine.apply(files, findingId)` — запрос роли 4 (см. «Запросы»)
+- [x] декомпозиция монолита: `Decomposer` предлагает разбиение на `Parser / Analyzer / Optimizer / Main` по именам
+      методов и вызовам, с полями, которые нужно перенести (v1 — только предложение, без перемещения кода)
+- [ ] `POST /decompose` в api (apply=false → предложение) — запрос роли 4 (см. «Запросы»)
 - [ ] LLM-помощник (опц.)
+**Известное ограничение:** LexicalPreservingPrinter не выравнивает отступы у вставленных операторов
+(`var _index = new java.util.HashSet<>(...)` печатается на уровень выше) — код валиден и компилируется,
+это косметика на полировку.
+**PR:** [#3](https://github.com/Raynariii/hackrnd26/pull/3) — 48 тестов модуля `analysis` зелёные, CI зелёный
+(backend, frontend, contracts, compose).
 **Блокеры:** —
 
 ## Роль 3 — фронтенд
@@ -73,7 +105,8 @@
 
 | Кто просит | Что | Кому | Статус |
 |---|---|---|---|
-| | | | |
+| Роль 2 | `POST /api/projects/{id}/fixes/{findingId}`: вызвать `io.blueprints.analysis.FixEngine#apply(files, findingId)`, закоммитить новую версию и вернуть `ChangeResult` (state + diff); `FixNotApplicableException` → 409/422 с текстом причины. Контракт и контроллер — зона роли 4. | Роль 4 | Открыт |
+| Роль 2 | `POST /api/projects/{id}/decompose`: `new Decomposer().propose(session.model())` → `DecomposeResult.proposal` (apply=false, v1); при apply=true пока 501 `not_implemented`. | Роль 4 | Открыт |
 
 ## Журнал интеграций
 | Когда | Результат | Что сломалось |
