@@ -259,6 +259,9 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 - [x] `POST /advice` (запрос роли 2d, P2, PR #40): находка + код её метода (≤ 200 строк) →
       `ClaudeAdvisor`; без `ANTHROPIC_API_KEY` → 204, сбой советчика → 502 `llm_unavailable`. `ANTHROPIC_MODEL` в compose
 - [x] `docker compose up` с нуля + полный путь демо (см. «Журнал интеграций», 24.10 ~16:20)
+- [x] CI (PR #62): job `compose` не только собирает образы, но и поднимает стек и проходит путь жюри через nginx
+      (`.github/scripts/compose-smoke.py`: `00-hello` → граф → `/run` → `/verify`, логи при сбое); job `frontend` —
+      `npm test` (64 теста, запрос роли 3)
 - [x] `POST /complexity` (запрос 2a, P1, PR #42): `{version?, nodeIds}` → `{version, current}` —
       Big O выделенных блоков блок-схемы через `MetricsCalculator.complexityOf`; 409 при устаревшей версии, 400 без id
 - [x] корпус: 6 монолитов (~3000 строк) + `00-hello`, разделы 1–4 + бонус, у каждого `NOTES.md` (scope + дефекты)
@@ -293,7 +296,7 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 | Роль 4 | **Баг `FixEngine.forEachInsteadOfIndex`:** не проверяет, что цикл идёт с 0 до `size()` с шагом 1. В `corpus/01-shop-orders` (`printAuditTail`: `for (int i = from; …)`) for-each печатает весь журнал вместо хвоста — **quality gate отклонил** исправление (поведение разошлось), но кнопка обещает его. Нужна проверка: init = 0, условие `i < x.size()`, update `i++`. | Роль 2 | Открыт |
 | Роль 4 | Анализатор не находит заложенные дефекты: `duplicate-code` (`01-shop-orders`: `totalQuantityForCity`/`…Category`; `02-library`: ветки `fineFor`) и `linked-list-index-access` у поля объекта (`02-library`: `b.waitList.get(i)`). | Роль 2 | Сделано — PR #39 (почти-копии и LinkedList-поле) |
 | Роль 4 | **`MetricsCalculator.complexityOf`: оператор внутри циклов даёт O(1).** `estimate` учитывает глубину циклов-предков только для узлов-циклов и вызовов, поэтому `count++` (или `if`) во вложенном цикле → O(1), хотя по javadoc «блок внутри двух циклов исполняется O(n²) раз». Выделение внутреннего цикла даёт O(n²) верно. Пример — `ComplexityApiTest` (api). | Роль 2 (2a) | Открыт |
-| Роль 4 | Обзорный граф пропускает члены класса: `static`/instance-блоки инициализации (`InitializerDeclaration`), компактный конструктор record (`CompactConstructorDeclaration`), компоненты record, константы enum (с телами). Код сохраняется, но в графе их нет — в `docs/scope.md` отмечено 🟡. | Роль 1 | Сделано — PR #46 (компоненты record — пока нет) |
+| Роль 4 | Обзорный граф пропускает члены класса: `static`/instance-блоки инициализации (`InitializerDeclaration`), компактный конструктор record (`CompactConstructorDeclaration`), компоненты record, константы enum (с телами). Код сохраняется, но в графе их нет — в `docs/scope.md` отмечено 🟡. | Роль 1 | Закрыт — PR #46 (роль 1) |
 
 ## Журнал интеграций
 | Когда | Результат | Что сломалось |
