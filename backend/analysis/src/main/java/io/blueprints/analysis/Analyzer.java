@@ -56,10 +56,20 @@ public final class Analyzer {
         return rules;
     }
 
+    /**
+     * Диагностика проекта. Правила изолированы друг от друга: если одно правило не осилило
+     * незнакомую конструкцию Java и упало, остальные всё равно дают находки — панель «Проблемы»
+     * не должна обнуляться из-за одного пропущенного случая (CLAUDE.md: неподдерживаемая
+     * конструкция не роняет разбор). То же для метрик: не посчитали метод — пропускаем его.
+     */
     public AnalysisReport analyze(ProjectModel model) {
         List<Finding> findings = new ArrayList<>();
         for (Rule rule : rules) {
-            findings.addAll(rule.check(model));
+            try {
+                findings.addAll(rule.check(model));
+            } catch (RuntimeException ignored) {
+                // Правило не справилось с конструкцией — теряем только его находки.
+            }
         }
         // Панель «Проблемы» показывает сначала критичное и сверху вниз по коду.
         findings.sort(Comparator.comparing(Finding::severity).thenComparingInt(Finding::startLine));
@@ -71,7 +81,11 @@ public final class Analyzer {
         List<MethodMetrics> result = new ArrayList<>();
         model.units().forEach((file, cu) -> {
             for (MethodDeclaration method : cu.findAll(MethodDeclaration.class)) {
-                result.add(metricsCalculator.forMethod(model, file, method));
+                try {
+                    result.add(metricsCalculator.forMethod(model, file, method));
+                } catch (RuntimeException ignored) {
+                    // Метод с нестандартным AST остаётся без метрик, но не ломает остальные.
+                }
             }
         });
         return result;
