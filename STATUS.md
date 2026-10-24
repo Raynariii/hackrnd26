@@ -29,7 +29,7 @@
       return, switch/case (провал без break, стрелочные case, «нет совпадений»), break/continue с метками,
       try-with-resources/catch/finally, throw. `parent` = контейнер (цикл, ветка условия, case, try, catch, finally).
       `meta.covers` — id выражений внутри блока: по нему `Finding.nodeIds` привязываются к блокам. 17 тестов (PR #5)
-- [x] overview: рёбра `call` (`CallGraph`, 4 теста; PR — feat/core-call-edges): метод / конструктор / поле →
+- [x] overview: рёбра `call` (`CallGraph`, 4 теста; PR #12): метод / конструктор / поле →
       метод или конструктор проекта, `new X()` без явного конструктора → класс X, `this(...)`, вызовы из лямбд — от
       метода. SymbolSolver (типы проекта из памяти + JRE), при сбое — откат на имя + число аргументов: свой класс,
       `Класс.метод()`, `переменная.метод()` по объявленному типу. Библиотечные вызовы рёбер не дают. Повторные
@@ -46,7 +46,12 @@
       insertAfter, члены класса — после другого члена; `extractMethod` — private (static, если исходный static) метод
       `name`: параметры — читаемые локальные переменные, возврат — единственная переменная, нужная дальше;
       `throws` и type-параметры копируются. Отказ (422): return / break / continue наружу, >1 выходной переменной, `var`
-- [ ] round-trip тест на всём `corpus/`
+- [x] round-trip тест на всём `corpus/` (`CorpusRoundTripTest`, PR — feat/core-corpus-roundtrip): каждая папка корпуса
+      + `core/src/test/resources/scope/ScopeSample.java` (scope 1–4 + бонус: sealed/record/enum, generics, лямбды,
+      Stream, switch-выражения с yield, text block, try-with-resources, multi-catch, метки, анонимный класс,
+      instanceof-паттерны): разбор без ошибок, печать байт-в-байт, overview и блок-схема каждого метода согласованы,
+      insertAfter `:start` на каждом методе. Новый пример корпуса проверяется автоматически; `raw`-конструкции
+      печатаются в лог теста (сейчас только `synchronized`) — для `docs/scope.md` (роль 4)
 - [x] откат на pretty-print, если LexicalPreservingPrinter падает (G6): `CodeGenerator.printReport` → `reformatted`
       (список файлов, напечатанных без сохранения форматирования); операции графа LPP для правок не используют
 **Для фронта (роль 3):** находка → блок: блок, у которого `id` или `meta.covers` содержит любой из `Finding.nodeIds`.
