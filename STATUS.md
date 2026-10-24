@@ -80,11 +80,17 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
       методов и вызовам, с полями, которые нужно перенести (v1 — только предложение, без перемещения кода)
 - [ ] `POST /decompose` в api (apply=false → предложение) — запрос роли 4 (см. «Запросы»)
 - [ ] LLM-помощник (опц.)
+- [x] прогон анализатора по всему `corpus/` (`CorpusAnalysisTest`): любой новый пример корпуса проверяется автоматически —
+      разбор без ошибок, метрики по каждому методу, у каждой находки реальный файл, строки и `nodeIds` (PR #11)
+- [x] стык с ядром: `FindingNodeBindingTest` — каждая находка привязывается к узлу графа через `id` или `meta.covers`
+      (`methodFlow` роли 1) (PR #9)
+- [x] устойчивость: падение одного правила или файл с ошибкой разбора не обнуляют панель «Проблемы» (PR #4)
 **Известное ограничение:** LexicalPreservingPrinter не выравнивает отступы у вставленных операторов
 (`var _index = new java.util.HashSet<>(...)` печатается на уровень выше) — код валиден и компилируется,
 это косметика на полировку.
-**PR:** [#3](https://github.com/Raynariii/hackrnd26/pull/3) — 48 тестов модуля `analysis` зелёные, CI зелёный
-(backend, frontend, contracts, compose).
+**PR:** [#3](https://github.com/Raynariii/hackrnd26/pull/3) (правила, метрики, авто-исправления, декомпозиция),
+[#4](https://github.com/Raynariii/hackrnd26/pull/4) (устойчивость), [#9](https://github.com/Raynariii/hackrnd26/pull/9)
+(стык с ядром) — **53 теста** модуля `analysis` зелёные, CI зелёный (backend, frontend, contracts, compose).
 **Блокеры:** —
 
 ## Роль 3 — фронтенд
