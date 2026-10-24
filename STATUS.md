@@ -235,10 +235,7 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 - [ ] фаззинг статических методов через генерируемую обвязку (G5, P2)
 - [ ] генерация JUnit golden-master + `GET /export` (zip)
 - [ ] бенчмарк n, 2n, 4n
-- [x] SSE-консоль (PR — `feat/run-sse`): `POST /projects/{id}/run/stream` → события `compile` / `stdout` / `stderr` /
-      `exit` / `error` по мере появления (runner `POST /internal/run-stream`: процесс с потоковым чтением, те же таймаут,
-      лимит вывода и защита `mainClass`). Проверено: строки программы со `sleep` приходят через ~0,7 с каждая, а не в конце.
-      **Для фронта (роль 3):** `fetch` + `ReadableStream` (EventSource не умеет POST), разбор `event:`/`data:`; тип `RunStreamEvent`
+- [ ] SSE-консоль для `/run` (опц.)
 - [ ] корпус: 5–8 монолитов ~1000 строк, покрытие scope 1–4 (+ бонус)
 - [ ] `docs/`: архитектура, поддержанный scope, ограничения; README для жюри
 - [ ] проверить `docker compose up --build` с нуля
