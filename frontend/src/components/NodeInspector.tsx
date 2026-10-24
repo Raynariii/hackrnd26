@@ -10,12 +10,18 @@ interface Props {
   graph: Graph;
   /** Выполнить операцию; вернуть текст ошибки для пользователя или null при успехе. */
   onOp: (req: Omit<GraphOpRequest, 'version'>) => Promise<string | null>;
+  /** Big O выделения (POST /complexity): строка, 'pending' — считаем, null — не удалось, undefined — не показываем. */
+  complexity?: string | null;
+  /** Вид блока из палитры: открыть форму «Вставить после» с этим видом (seq — чтобы повтор тоже срабатывал). */
+  insertIntent?: { kind: NodeKind; seq: number } | null;
+  /** Намерение использовано — App его сбрасывает, чтобы инспектор нового выделения не открыл вставку снова. */
+  onIntentHandled?: () => void;
 }
 
 const CONTAINERS = ['loop', 'condition', 'try', 'switch', 'catch', 'case'];
 
 /** Выделенные узлы и правка на графе (POST /graph/ops): над одним блоком и над несколькими подряд идущими. */
-export function NodeInspector({ selection, graph, onOp }: Props) {
+export function NodeInspector({ selection, graph, onOp, complexity, insertIntent, onIntentHandled }: Props) {
   const node = selection.at(-1)!;
   const many = selection.length > 1;
   const ordered = inCodeOrder(selection);
@@ -36,6 +42,18 @@ export function NodeInspector({ selection, graph, onOp }: Props) {
     setMode('view');
     setError(null);
   }, [key]);
+
+  // Палитра: после сброса выше (тот же коммит, эффект объявлен позже) открываем вставку нужного вида.
+  useEffect(() => {
+    if (!insertIntent) return;
+    onIntentHandled?.();
+    if (many || !allowedOps(node, graph.level).has('insertAfter')) return;
+    setError(null);
+    setKind(insertIntent.kind);
+    setCode('');
+    setMode('insert');
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- только на новое намерение
+  }, [insertIntent?.seq]);
 
   const open = (m: Mode) => {
     setError(null);
@@ -84,7 +102,15 @@ export function NodeInspector({ selection, graph, onOp }: Props) {
 
   return (
     <div className="inspector">
-      <h3>{many ? `Выделено блоков: ${selection.length}` : 'Блок'}</h3>
+      <div className="inspector-head">
+        <h3>{many ? `Выделено блоков: ${selection.length}` : node.kind === 'start' ? 'Метод' : 'Блок'}</h3>
+        {complexity !== undefined && complexity !== null && (
+          <span className="inspector-complexity"
+            title={`Сложность ${node.kind === 'start' ? 'метода' : many ? 'выделенного фрагмента' : 'блока'} с учётом циклов вокруг`}>
+            <code>{complexity === 'pending' ? '…' : complexity}</code>
+          </span>
+        )}
+      </div>
       {many ? (
         <ol className="inspector-list">
           {ordered.map((n) => (

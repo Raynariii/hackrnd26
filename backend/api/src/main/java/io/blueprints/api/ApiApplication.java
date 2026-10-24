@@ -1,6 +1,8 @@
 package io.blueprints.api;
 
 import io.blueprints.analysis.Analyzer;
+import io.blueprints.analysis.llm.ClaudeAdvisor;
+import io.blueprints.analysis.llm.OptimizationAdvisor;
 import io.blueprints.analysis.Decomposer;
 import io.blueprints.analysis.FixEngine;
 import io.blueprints.core.graph.DefaultGraphBuilder;
@@ -53,5 +55,11 @@ public class ApiApplication {
     @Bean
     Decomposer decomposer() {
         return new Decomposer();
+    }
+
+    /** LLM-советчик (роль 2d): ключ только из окружения ANTHROPIC_API_KEY; без ключа выключен. */
+    @Bean
+    OptimizationAdvisor optimizationAdvisor() {
+        return ClaudeAdvisor.fromEnvironment();
     }
 }

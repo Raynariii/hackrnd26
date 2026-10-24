@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Background, BackgroundVariant, Controls, MiniMap, ReactFlow, useEdgesState, useNodesInitialized, useNodesState, useReactFlow, useStore, type Edge, type Node, type NodeChange } from '@xyflow/react';
-import type { Finding, Graph, GraphNode } from '../api/types';
+import type { Finding, Graph, GraphNode, NodeKind } from '../api/types';
+import { PALETTE_MIME } from './BlockPalette';
 import { BlockNode, FrameNode, kindColor } from './BlockNode';
 import { edgePaint, layoutGraph, type Theme } from './layout';
 import type { EdgeTone } from '../flow/methodFlow';
@@ -19,6 +20,10 @@ interface Props {
   /** Находки анализатора, разложенные по блокам текущего графа (sourceMap.findingsByNode). */
   findings?: Map<string, Finding[]>;
   theme?: Theme;
+  /** Вид блока из палитры брошен на узел схемы (палитра — только на блок-схеме метода). */
+  onDropKind?: (kind: NodeKind, target: GraphNode) => void;
+  /** Можно ли вставить после этого узла (insertAfter): иначе он не подсвечивается и бросить нельзя. */
+  canDropOn?: (node: GraphNode) => boolean;
 }
 
 /** Плавно центрирует холст на узле, сохраняя масштаб. Рендерится внутри ReactFlow ради useReactFlow. */
@@ -81,7 +86,7 @@ const NO_FINDINGS: Finding[] = [];
 
 const nodeOf = (n: Node) => (n.data as { node: GraphNode }).node;
 
-export function GraphCanvas({ graph, selectedIds, onSelect, onOpenMethod, focus, findings, theme = 'light' }: Props) {
+export function GraphCanvas({ graph, selectedIds, onSelect, onOpenMethod, focus, findings, theme = 'light', onDropKind, canDropOn }: Props) {
   // Узлы живут в состоянии и принимают изменения от React Flow (размеры, выделение). Если отдавать новые
   // объекты на каждый рендер без onNodesChange, React Flow теряет замеры и на кадр прячет узлы —
   // второй клик двойного клика уходит в пустой холст, и метод не открывается.
@@ -90,6 +95,25 @@ export function GraphCanvas({ graph, selectedIds, onSelect, onOpenMethod, focus,
   /** Счётчик раскладок: новый граф → новый key → ReactFlow заново делает fitView. */
   const [rev, setRev] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  /** Блок под перетаскиваемым видом из палитры — подсвечен как место вставки. */
+  const [dropId, setDropId] = useState<string | null>(null);
+
+  /** Узел схемы под курсором, куда можно вставить: блок или рамка (тогда — после всей конструкции). */
+  const dropTarget = (e: React.DragEvent): { id: string; node: GraphNode } | null => {
+    const el = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>('.react-flow__node');
+    const flowNode = el?.dataset.id ? nodes.find((n) => n.id === el.dataset.id) : undefined;
+    if (!flowNode) return null;
+    const node = nodeOf(flowNode);
+    return canDropOn?.(node) ? { id: flowNode.id, node } : null;
+  };
+
+  // Подсветка места вставки — класс узла React Flow, раскладку не трогаем.
+  useEffect(() => {
+    setNodes((nds) => nds.map((n) => {
+      const want = n.id === dropId ? 'drop-target' : undefined;
+      return n.className === want ? n : { ...n, className: want };
+    }));
+  }, [dropId, rev, setNodes]);
 
   useEffect(() => {
     if (!graph) return;
@@ -177,6 +201,23 @@ export function GraphCanvas({ graph, selectedIds, onSelect, onOpenMethod, focus,
       onNodeDoubleClick={(_, n) => {
         const node = nodeOf(n);
         if (node.kind === 'method' || node.kind === 'constructor') onOpenMethod(node);
+      }}
+      onDragOver={(e) => {
+        if (!onDropKind || !e.dataTransfer.types.includes(PALETTE_MIME)) return;
+        e.preventDefault();
+        const target = dropTarget(e);
+        e.dataTransfer.dropEffect = target ? 'copy' : 'none';
+        setDropId(target?.id ?? null);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as globalThis.Node | null)) setDropId(null);
+      }}
+      onDrop={(e) => {
+        if (!onDropKind || !e.dataTransfer.types.includes(PALETTE_MIME)) return;
+        e.preventDefault();
+        setDropId(null);
+        const target = dropTarget(e);
+        if (target) onDropKind(e.dataTransfer.getData(PALETTE_MIME) as NodeKind, target.node);
       }}
       minZoom={0.1}
       colorMode={theme}

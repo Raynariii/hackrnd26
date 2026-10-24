@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { BenchPoint } from '../flow/verify';
+import { endLabels, type BenchPoint } from '../flow/verify';
 
 // Две серии: «до» (эталон, версия 1) и «после» (текущая). Цвета — категориальные слоты 2 и 1 светлой темы,
 // проверены validate_palette.js на фоне --sheet (#ffffff), все проверки PASS. «До» ещё и пунктиром — не только цветом.
@@ -10,7 +10,7 @@ const SERIES = [
 
 const W = 560;
 const H = 220;
-const PAD = { top: 16, right: 64, bottom: 34, left: 52 };
+const PAD = { top: 16, right: 84, bottom: 34, left: 52 };
 
 const fmtMs = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(ms >= 10000 ? 0 : 1)} с` : `${Math.round(ms)} мс`);
 const fmtN = (n: number) => n.toLocaleString('ru-RU');
@@ -82,10 +82,18 @@ export function BenchmarkChart({ points }: { points: BenchPoint[] }) {
             {data.map((p, i) => (
               <circle key={p.n} cx={x(i)} cy={y(p[s.key])} r={hover === i ? 5 : 4} fill={s.color} className="bench-dot" />
             ))}
-            {/* прямая подпись у конца линии */}
-            <text x={x(data.length - 1) + 10} y={y(data.at(-1)![s.key])} className="bench-label" dominantBaseline="middle">{s.name}</text>
           </g>
         ))}
+        {/* прямые подписи у концов линий; близкие — разведены, совпавшие — одна «до = после» */}
+        {(() => {
+          const lab = endLabels(y(data.at(-1)!.baselineMs), y(data.at(-1)!.currentMs));
+          const lx0 = x(data.length - 1) + 10;
+          return lab.merged
+            ? <text x={lx0} y={lab.y} className="bench-label" dominantBaseline="middle">до = после</text>
+            : SERIES.map((s) => (
+                <text key={s.key} x={lx0} y={s.key === 'baselineMs' ? lab.before : lab.after} className="bench-label" dominantBaseline="middle">{s.name}</text>
+              ));
+        })()}
         {/* зоны наведения шире точек: вся полоса по x вокруг каждого n */}
         {data.map((p, i) => {
           const left = i === 0 ? PAD.left - 20 : (x(i - 1) + x(i)) / 2;

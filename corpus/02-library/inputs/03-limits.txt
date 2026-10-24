@@ -1,0 +1,19 @@
+BOOK b1 1990 А | Один
+BOOK b2 1991 Б | Два
+BOOK b3 1992 В | Три
+BOOK b4 1993 Г | Четыре
+COPY b1 5
+COPY b2 5
+COPY b3 5
+COPY b4 5
+READER u ADULT Тест
+TAKE 1 u b1
+TAKE 1 u b2
+TAKE 1 u b3
+TAKE 1 u b4
+RETURN 100 u b1
+RETURN 100 u b2
+TAKE 101 u b4
+RETURN 300 u b3
+TAKE 301 u b1
+STATS

@@ -1,0 +1,43 @@
+// студенты
+STUDENT s1 ИВТ-21 Анна
+STUDENT s2 ИВТ-21 Борис
+STUDENT s3 ПИ-22 Вера
+STUDENT s4 ПИ-22 Глеб
+STUDENT s5 ИВТ-21 Дарья
+// задания
+TASK q1 QUIZ 10 5 Тест по синтаксису
+TASK q2 QUIZ 10 12 Тест по коллекциям
+TASK l1 LAB 20 10 Лабораторная: массивы
+TASK l2 LAB 20 20 Лабораторная: исключения
+TASK p1 PROJECT 50 30 Курсовой проект
+TASK e1 EXAM 100 40 Экзамен
+// сдачи
+SUBMIT s1 q1 9 3
+SUBMIT s1 q2 10 11
+SUBMIT s1 l1 18 9
+SUBMIT s1 l2 20 19
+SUBMIT s1 p1 47 29
+SUBMIT s1 e1 91 40
+SUBMIT s2 q1 6 5
+SUBMIT s2 q2 7 13
+SUBMIT s2 l1 15 13
+SUBMIT s2 l1 19 14
+SUBMIT s2 p1 40 33
+SUBMIT s2 e1 64 40
+SUBMIT s3 q1 10 1
+SUBMIT s3 l1 20 10
+SUBMIT s3 l2 12 25
+SUBMIT s3 e1 75 39
+SUBMIT s4 q1 3 5
+SUBMIT s4 l1 8 10
+SUBMIT s4 e1 30 41
+SUBMIT s5 q1 8 5
+SUBMIT s5 q2 9 12
+SUBMIT s5 l1 18 10
+SUBMIT s5 l2 18 20
+SUBMIT s5 p1 45 30
+SUBMIT s5 e1 88 40
+BONUS s4 5 активность на семинарах
+BONUS s2 3 помощь одногруппникам
+REPORT
+REPORT ПИ-22

@@ -9,8 +9,13 @@ import io.blueprints.api.web.Dto.RunResult;
 import io.blueprints.api.web.Dto.VerifyCase;
 import io.blueprints.api.web.Dto.VerifyReport;
 import io.blueprints.api.web.Dto.VerifyRequest;
+import io.blueprints.core.fuzz.FuzzHarness;
+import io.blueprints.core.model.JavaProjectParser;
 import io.blueprints.core.model.ParseProblem;
+import io.blueprints.core.model.ProjectModel;
 import io.blueprints.core.model.SourceFile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -21,6 +26,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 /**
  * Дифференциальные тесты (D3): эталонная версия и текущая компилируются по одному разу и запускаются в песочнице
@@ -38,16 +45,24 @@ public class VerifyService {
             new Input("Граничный: Integer.MAX_VALUE", "2147483647\n", true),
             new Input("Граничный: не число", "abc\n", true));
 
+    private static final Logger log = LoggerFactory.getLogger(VerifyService.class);
+    /** Вызовов на один статический метод при фаззинге (G5). */
+    static final int FUZZ_CASES = 20;
+    static final String FUZZ_CASE_PREFIX = "Фаззинг статических методов";
+    private static final java.util.regex.Pattern FUZZ_CALL = java.util.regex.Pattern.compile("^([\\w$]+)\\(");
+
     private final BatchRunner runner;
     private final CorpusInputs corpus;
+    private final JavaProjectParser parser;
     private final int timeoutMs;
     private final int maxCases;
 
-    public VerifyService(BatchRunner runner, CorpusInputs corpus,
+    public VerifyService(BatchRunner runner, CorpusInputs corpus, JavaProjectParser parser,
                          @Value("${verify.timeout-ms:10000}") int timeoutMs,
                          @Value("${verify.max-cases:40}") int maxCases) {
         this.runner = runner;
         this.corpus = corpus;
+        this.parser = parser;
         this.timeoutMs = timeoutMs;
         this.maxCases = maxCases;
     }
@@ -67,14 +82,24 @@ public class VerifyService {
         List<String> stdins = new ArrayList<>(inputs.stream().map(Input::stdin).toList());
         bench.forEach(b -> stdins.add(b.stdin()));
 
-        RunBatchResult expected = runner.runBatch(baseline, stdins, timeoutMs);
+        // Эталон и текущая версия — параллельно (два независимых javac+java, у runner 2 CPU). С бенчмарком —
+        // последовательно, иначе процессы делят процессор и время «до/после» искажается.
+        RunBatchResult expected;
+        RunBatchResult actual;
+        if (bench.isEmpty()) {
+            CompletableFuture<RunBatchResult> pending =
+                    CompletableFuture.supplyAsync(() -> runner.runBatch(current, stdins, timeoutMs));
+            expected = runner.runBatch(baseline, stdins, timeoutMs);
+            actual = join(pending);
+        } else {
+            expected = runner.runBatch(baseline, stdins, timeoutMs);
+            actual = expected.compile().ok() ? runner.runBatch(current, stdins, timeoutMs) : null;
+        }
         if (!expected.compile().ok()) {
             throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "baseline_compile_error",
                     "Эталонная версия " + baselineVersion + " не компилируется — сравнивать не с чем",
                     problems(expected));
         }
-        RunBatchResult actual = runner.runBatch(current, stdins, timeoutMs);
-
         if (!actual.compile().ok()) {
             String reason = "Текущая версия не компилируется" + firstProblem(actual);
             List<VerifyCase> cases = new ArrayList<>();
@@ -99,6 +124,10 @@ public class VerifyService {
             cases.add(compare(in.name(), in.stdin(), exp, actual.results().get(i)));
         }
 
+        if (!Boolean.FALSE.equals(r.fuzz())) {
+            fuzzCase(baseline, current).ifPresent(cases::add);
+        }
+
         List<BenchmarkPoint> benchmark = new ArrayList<>();
         for (int j = 0; j < bench.size(); j++) {
             int idx = inputs.size() + j;
@@ -112,6 +141,79 @@ public class VerifyService {
         int passed = (int) cases.stream().filter(VerifyCase::ok).count();
         boolean preserved = !cases.isEmpty() && passed == cases.size();
         return new VerifyReport(baselineVersion, currentVersion, true, preserved, passed, cases.size(), cases, benchmark);
+    }
+
+    /**
+     * Фаззинг статических методов (G5): обвязка {@link FuzzHarness} вызывает каждый общий для обеих версий
+     * статический метод на одних и тех же детерминированных аргументах; вывод сравнивается целиком. Это ловит
+     * изменение поведения метода, до которого не дотягиваются stdin-входы. Сбой обвязки не роняет verify —
+     * фаззинг дополнение к основным случаям.
+     */
+    Optional<VerifyCase> fuzzCase(List<SourceFile> baseline, List<SourceFile> current) {
+        try {
+            ProjectModel before = parser.parse(baseline);
+            ProjectModel after = parser.parse(current);
+            if (before.hasErrors() || after.hasErrors()) {
+                return Optional.empty();
+            }
+            List<FuzzHarness.Target> targets = FuzzHarness.common(before, after);
+            if (targets.isEmpty()) {
+                return Optional.empty();
+            }
+            FuzzHarness.Harness harness = FuzzHarness.generate(targets, FUZZ_CASES);
+            List<SourceFile> withHarnessBefore = new ArrayList<>(baseline);
+            withHarnessBefore.add(harness.file());
+            List<SourceFile> withHarnessAfter = new ArrayList<>(current);
+            withHarnessAfter.add(harness.file());
+            int fuzzTimeout = Math.max(timeoutMs, 30_000);
+            CompletableFuture<RunBatchResult> pending = CompletableFuture.supplyAsync(
+                    () -> runner.runBatch(withHarnessAfter, harness.mainClass(), List.of(""), fuzzTimeout));
+            RunBatchResult exp = runner.runBatch(withHarnessBefore, harness.mainClass(), List.of(""), fuzzTimeout);
+            RunBatchResult act = join(pending);
+            if (exp == null || act == null || !exp.compile().ok() || !act.compile().ok()
+                    || exp.results().isEmpty() || act.results().isEmpty() || exp.results().get(0).timedOut()) {
+                log.warn("Фаззинг пропущен: обвязка не скомпилировалась или эталон не завершился");
+                return Optional.empty();
+            }
+            String name = FUZZ_CASE_PREFIX + ": " + targets.size() + " × " + FUZZ_CASES + " вызовов";
+            VerifyCase c = compare(name, null, exp.results().get(0), act.results().get(0));
+            if (!c.ok()) {
+                c = new VerifyCase(c.name(), null, c.expected(), c.actual(), false,
+                        culprit(exp.results().get(0).stdout(), act.results().get(0).stdout()) + c.mismatch());
+            }
+            return Optional.of(c);
+        } catch (RuntimeException e) {
+            log.warn("Фаззинг пропущен: {}", e.toString());
+            return Optional.empty();
+        }
+    }
+
+    /** «метод pairs: » — метод, на вызове которого вывод впервые разошёлся (по строке «имя(аргументы) -> …»). */
+    static String culprit(String expectedStdout, String actualStdout) {
+        String[] e = OutputNormalizer.normalizeStdout(expectedStdout).split("\n", -1);
+        String[] a = OutputNormalizer.normalizeStdout(actualStdout).split("\n", -1);
+        int i = 0;
+        while (i < e.length && i < a.length && e[i].equals(a[i])) {
+            i++;
+        }
+        for (int k = Math.min(i, e.length - 1); k >= 0; k--) {
+            java.util.regex.Matcher m = FUZZ_CALL.matcher(e[k]);
+            if (m.find()) {
+                return "метод " + m.group(1) + ": ";
+            }
+        }
+        return "";
+    }
+
+    private static RunBatchResult join(CompletableFuture<RunBatchResult> future) {
+        try {
+            return future.join();
+        } catch (CompletionException e) {
+            if (e.getCause() instanceof RuntimeException cause) {
+                throw cause;
+            }
+            throw e;
+        }
     }
 
     List<Input> collectInputs(VerifyRequest r, List<String> savedInputs, Optional<CorpusInputs.Example> example) {
