@@ -106,16 +106,57 @@ export const mockRun: RunResult = {
   timedOut: false,
 };
 
+const okRun = (stdout: string): RunResult => ({ compile: { ok: true, problems: [] }, stdout, stderr: '', exitCode: 0, timedOut: false });
+
 export const mockVerify: VerifyReport = {
   baselineVersion: 1,
-  currentVersion: 1,
+  currentVersion: 3,
   compiled: true,
   behaviorPreserved: true,
-  passed: 3,
-  total: 3,
+  passed: 6,
+  total: 6,
   cases: [
-    { name: 'stdin: пусто', ok: true },
-    { name: 'fuzz #1', ok: true },
-    { name: 'fuzz #2', ok: true },
+    { name: 'stdin: пусто', input: '', ok: true, expected: okRun('[2, 6]\n'), actual: okRun('[2, 6]\n') },
+    { name: 'corpus: 01.txt', input: '1 2 2 3', ok: true, expected: okRun('[2, 4, 6]\n'), actual: okRun('[2, 4, 6]\n') },
+    { name: 'граничный: один элемент', input: '7', ok: true, expected: okRun('[14]\n'), actual: okRun('[14]\n') },
+    { name: 'граничный: все одинаковые', input: '5 5 5 5', ok: true, expected: okRun('[10]\n'), actual: okRun('[10]\n') },
+    { name: 'fuzz #1', input: '9 -3 0 9', ok: true, expected: okRun('[18, -6, 0]\n'), actual: okRun('[18, -6, 0]\n') },
+    { name: 'fuzz #2', input: '2147483647 1', ok: true, expected: okRun('[-2, 2]\n'), actual: okRun('[-2, 2]\n') },
   ],
+  // processOrders: contains() в цикле → HashSet, O(n²) → O(n)
+  benchmark: [
+    { n: 2000, baselineMs: 31, currentMs: 9 },
+    { n: 4000, baselineMs: 118, currentMs: 17 },
+    { n: 8000, baselineMs: 466, currentMs: 35 },
+    { n: 16000, baselineMs: 1874, currentMs: 71 },
+  ],
+};
+
+/** ?verify=fail в режиме моков: правка изменила поведение (порядок элементов). */
+export const mockVerifyFail: VerifyReport = {
+  ...mockVerify,
+  behaviorPreserved: false,
+  passed: 4,
+  cases: mockVerify.cases.map((c) =>
+    c.name === 'corpus: 01.txt'
+      ? { ...c, ok: false, actual: okRun('[2, 6, 4]\n'), mismatch: 'stdout: порядок элементов изменился (HashSet не сохраняет порядок)' }
+      : c.name === 'fuzz #1'
+        ? { ...c, ok: false, actual: okRun('[-6, 0, 18]\n'), mismatch: 'stdout' }
+        : c,
+  ),
+};
+
+/** ?verify=nocompile: текущая версия не компилируется — так отвечает VerifyService (кейсы без actual). */
+export const mockVerifyNoCompile: VerifyReport = {
+  baselineVersion: 1,
+  currentVersion: 2,
+  compiled: false,
+  behaviorPreserved: false,
+  passed: 0,
+  total: 2,
+  cases: [
+    { name: 'stdin: пусто', input: '', ok: false, expected: okRun('[2, 6]\n'), mismatch: 'compile: Main.java:10: error: cannot find symbol seen' },
+    { name: 'corpus: 01.txt', input: '1 2 2 3', ok: false, expected: okRun('[2, 4, 6]\n'), mismatch: 'compile: Main.java:10: error: cannot find symbol seen' },
+  ],
+  benchmark: [],
 };
