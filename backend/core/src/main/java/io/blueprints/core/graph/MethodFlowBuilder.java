@@ -365,6 +365,7 @@ final class MethodFlowBuilder {
         return outs;
     }
 
+    /** catch и finally — части оператора try: их {@code parent} = try, тела — с parent = catch / finally. */
     private List<Exit> tryStmt(TryStmt t, List<Exit> in, String parent) {
         String header = t.getResources().isEmpty() ? "try"
                 : "try (" + t.getResources().stream().map(MethodFlowBuilder::code).collect(Collectors.joining("; ")) + ")";
@@ -374,13 +375,13 @@ final class MethodFlowBuilder {
         for (CatchClause c : t.getCatchClauses()) {
             String type = c.getParameter().getType().toString();
             String catchId = add(c, NodeKind.CATCH, "Обработка (catch)", "catch (" + code(c.getParameter()) + ")",
-                    parent, Map.of());
+                    id, Map.of());
             edge(id, catchId, EdgeKind.EXCEPTION, type);
             outs.addAll(block(c.getBody().getStatements(), List.of(Exit.next(catchId)), catchId));
         }
         if (t.getFinallyBlock().isPresent()) {
             BlockStmt fin = t.getFinallyBlock().get();
-            String finId = add(fin, NodeKind.FINALLY, "Всегда (finally)", "finally", parent, Map.of());
+            String finId = add(fin, NodeKind.FINALLY, "Всегда (finally)", "finally", id, Map.of());
             for (Exit exit : outs) {
                 edge(exit.from(), finId, EdgeKind.FINALLY, exit.label());
             }

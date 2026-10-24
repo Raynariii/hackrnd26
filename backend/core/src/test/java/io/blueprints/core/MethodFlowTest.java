@@ -372,6 +372,7 @@ class MethodFlowTest {
         assertThat(parse.parent()).isEqualTo(tr.id());
         List<GraphNode> catches = g.nodes().stream().filter(n -> n.kind() == NodeKind.CATCH).toList();
         assertThat(catches).hasSize(2);
+        assertThat(catches).allMatch(c -> tr.id().equals(c.parent()));
         assertThat(edge(g, tr, catches.get(0)).kind()).isEqualTo(EdgeKind.EXCEPTION);
         assertThat(edge(g, tr, catches.get(0)).label()).isEqualTo("NumberFormatException");
         GraphNode thr = node(g, NodeKind.THROW, "throw new IOException");
@@ -380,6 +381,7 @@ class MethodFlowTest {
         GraphNode fin = g.nodes().stream().filter(n -> n.kind() == NodeKind.FINALLY).findFirst().orElseThrow();
         assertThat(hasEdge(g, parse, fin, EdgeKind.FINALLY)).isTrue();
         assertThat(hasEdge(g, node(g, NodeKind.OPERATION, "v = -1"), fin, EdgeKind.FINALLY)).isTrue();
+        assertThat(fin.parent()).isEqualTo(tr.id());
         GraphNode print = node(g, NodeKind.CALL, "\"finally\"");
         assertThat(print.parent()).isEqualTo(fin.id());
         assertThat(hasEdge(g, print, node(g, NodeKind.RETURN, "return v"), EdgeKind.NEXT)).isTrue();
