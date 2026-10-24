@@ -68,7 +68,6 @@
       членов есть блок-схема, `:start` для insertAfter и рёбра call (`Members` — общее правило). Запрос роли 3 [3→1]
       (PR — feat/core-integration-3). Проверено на 6 монолитах `feat/corpus-monoliths` роли 4: разбор, печать
       байт-в-байт, графы всех методов, `raw` нет
-**Для фронта (роль 3):** `GET /export` → zip (кнопка «Экспорт»: скачать blob, имя из `Content-Disposition`).
 **Для фронта (роль 3):** находка → блок: блок, у которого `id` или `meta.covers` содержит любой из `Finding.nodeIds`.
 `start` блок-схемы покрывает id метода (находки уровня метода, например long-method).
 **Для фронта (роль 3), `POST /graph/ops`:** `editNode` у condition/loop/switch меняет только заголовок
@@ -152,7 +151,10 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
       после печати (2 теста в `FixEngineTest`; поведение кода не менялось)
 - [x] P1 тест на корпусе: `FixEngineCorpusTest` — для каждого вида исправления применяет применимую находку
       на мини-монолите и на `corpus/**/Main.java`, результат компилируется javac (PR #49)
-- [ ] P2 `extract-method` для `long-method` / `duplicate-code` через `GraphOperations.extractMethod` ядра (роль 1)
+- [x] P2 точный дубль → общий метод через ядро (PR #54): фиксер `ExtractDuplicateFix`, `Fix.kind = extract-duplicate`;
+      ядро выносит первое вхождение (`extractMethod` — само считает параметры и возврат), во второе
+      вставляется клон его вызова; проверка применимости — на копии модели, отказы на разные
+      тексты/классы/`var`/несколько выходных переменных; 3 теста с javac
 **Известное ограничение:** `nested-loop-same-collection` (пары по одной коллекции) авто-исправления не имеет —
 **Для фронта:** новые id — правило `nested-loop-linear-search`, `Fix.kind = nested-loop-index` (кнопка «Применить»
 для вложенного поиска совпадения).
@@ -231,12 +233,7 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 - [ ] монолиты организаторов → `corpus/` (G8, как только лид их получит)
 - [ ] `docs/scope.md`: матрица «конструкция → граф / генерация / тест» по разделам 1–4 + бонус (G9)
 - [ ] фаззинг статических методов через генерируемую обвязку (G5, P2)
-- [x] генерация JUnit golden-master + `GET /export` (zip) (PR — `feat/api-export`): Maven-проект с текущими исходниками,
-      `original/` (v1), `changes.diff`, `GoldenMasterTest` (JUnit 5, запускает текущую версию процессом и сверяет
-      stdout/stderr/exit с эталонами v1 после нормализации verify), `golden/NN.*`, `verify-report.json`, `README.md`
-      с таблицей результатов. Заголовки `X-Verify-Passed`, `X-Behavior-Preserved`. Проверено: `06-demo-warehouse`
-      после трёх исправлений → архив → `mvn test` — **9/9 зелёных**
-- [x] verify: эталон и текущая версия запускаются параллельно (gate ~3 с вместо ~4 с); с бенчмарком — последовательно
+- [ ] генерация JUnit golden-master + `GET /export` (zip)
 - [ ] бенчмарк n, 2n, 4n
 - [ ] SSE-консоль для `/run` (опц.)
 - [ ] корпус: 5–8 монолитов ~1000 строк, покрытие scope 1–4 (+ бонус)
