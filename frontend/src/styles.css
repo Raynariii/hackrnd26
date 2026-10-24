@@ -145,6 +145,8 @@
   --r-lg: 14px;
   --r-xl: 18px;
   --gap: 8px;
+  /* ширина полосы инструментов; колонка сетки берёт её же — полоса не заходит под соседние панели */
+  --stripe-w: 52px;
   font-family: var(--font-ui);
   font-size: 13px;
   line-height: 1.5;
@@ -232,7 +234,7 @@ h3 { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--text); }
 /* рабочая область: полосы инструментов + острова */
 .workspace { grid-area: workspace; display: grid; gap: var(--gap); min-height: 0; min-width: 0; padding: 0 var(--gap) var(--gap); }
 .stripe {
-  display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0; width: 52px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0; width: var(--stripe-w); min-height: 0; box-sizing: border-box;
   background: var(--island); border: 1px solid var(--border); border-radius: 26px;
 }
 .stripe-spacer { flex: 1; }
@@ -629,7 +631,9 @@ tbody tr:hover td { background: var(--island-2); }
 
 /* ===== по референсам: бренд, проект, чипы-метрики, режимы (без градиентов) ===== */
 .app { grid-template-rows: 60px minmax(0, 1fr) 28px; }
-.toolbar { gap: 10px; padding: 0 16px 0 14px; }
+.toolbar { gap: 10px; padding: 0 var(--gap); }
+/* логотип по центру над полосой инструментов: левые края тулбара и рабочей области совпадают */
+.toolbar .app-logo { margin: 0 calc((var(--stripe-w) - 32px) / 2); }
 .app-logo { width: 32px; height: 32px; border-radius: 10px; background: var(--accent-btn); }
 .brand-name { font-weight: 700; font-size: 15px; letter-spacing: -0.02em; white-space: nowrap; margin-right: 4px; }
 .project-widget {
@@ -754,3 +758,37 @@ tbody tr:hover td { background: var(--island-2); }
 .decompose-apply button { align-self: flex-start; }
 .decompose-apply .muted { font-size: 12px; }
 .console-live { color: var(--text-3); }
+
+/* ===== палитра блоков над блок-схемой ===== */
+.palette {
+  position: absolute; z-index: 5; top: 10px; left: 10px; max-height: calc(100% - 130px); overflow-y: auto;
+  display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 8px;
+  background: color-mix(in srgb, var(--island) 92%, transparent); border: 1px solid var(--border);
+  border-radius: var(--r-lg); box-shadow: 0 4px 14px rgb(0 0 0 / 0.22);
+}
+.palette-title { font-size: 11px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; padding: 0 4px 2px; }
+.palette-item {
+  height: 26px; padding: 0 9px 0 4px; gap: 3px; font-size: 12px; border-radius: var(--r-sm); cursor: grab;
+  justify-content: flex-start; background: transparent; border: 1px solid transparent; color: var(--text-2);
+}
+.palette-item:hover { color: var(--text); background: var(--island-2); border-color: var(--border); }
+.palette-item:active { cursor: grabbing; }
+.palette-grip { color: var(--text-3); }
+.palette-item.kind-condition .palette-grip { color: var(--k-branch); }
+.palette-item.kind-loop .palette-grip { color: var(--k-loop); }
+.palette-item.kind-try .palette-grip, .palette-item.kind-throw .palette-grip { color: var(--k-error); }
+.react-flow__node.drop-target .block,
+.react-flow__node.drop-target .frame { outline: 2px dashed var(--accent); outline-offset: 4px; }
+
+/* ===== полоса инструментов: действия, разделитель, свернуть/показать панели ===== */
+.stripe-sep { width: 22px; height: 1px; background: var(--divider); margin: 2px 0; flex: none; }
+.stripe-btn:disabled { opacity: .4; cursor: default; }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.island-head .island-actions .ghost.icon { width: 28px; height: 28px; padding: 0; color: var(--text-3); }
+.island-head .island-actions .ghost.icon:hover { color: var(--text); background: var(--pressed); }
+.show-right {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; margin-left: 6px;
+  border-radius: var(--r-sm); color: var(--text-2);
+}
+.show-right:hover { color: var(--text); background: var(--pressed); }
