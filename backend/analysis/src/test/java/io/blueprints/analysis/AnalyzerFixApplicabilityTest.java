@@ -136,10 +136,10 @@ class AnalyzerFixApplicabilityTest {
 
     @Test
     void registriesAreTheSinglePlaceOfRegistration() {
-        assertThat(Rules.defaultRules()).extracting(Rule::id).doesNotHaveDuplicates().hasSize(10);
+        assertThat(Rules.defaultRules()).extracting(Rule::id).doesNotHaveDuplicates().hasSize(11);
         assertThat(Analyzer.defaultRules()).extracting(Rule::id)
                 .containsExactlyElementsOf(Rules.defaultRules().stream().map(Rule::id).toList());
         assertThat(Fixers.all()).extracting(Fixer::kind)
-                .containsExactlyInAnyOrder("index-by-key", "string-builder", "extract-constant", "iterator");
+                .containsExactlyInAnyOrder("index-by-key", "string-builder", "extract-constant", "iterator", "nested-loop-index");
     }
 }
