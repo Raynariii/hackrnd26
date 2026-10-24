@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -36,6 +37,8 @@ public class JavaSandbox {
     private static final Pattern PACKAGE = Pattern.compile("^\\s*package\\s+([\\w.]+)\\s*;", Pattern.MULTILINE);
     private static final Pattern MAIN = Pattern.compile("static\\s+(public\\s+)?void\\s+main\\s*\\(");
     private static final Pattern JAVAC_ERROR = Pattern.compile("^(.+?\\.java):(\\d+): (?:error|ошибка): (.+)$", Pattern.MULTILINE);
+    /** mainClass приходит из API: без проверки строка вида "-version" станет опцией JVM. */
+    private static final Pattern FQN = Pattern.compile("^[A-Za-z_$][\\w$]*(\\.[A-Za-z_$][\\w$]*)*$");
     /** Переменные окружения, из-за которых JVM печатает в stderr лишние строки («Picked up …»). */
     private static final List<String> NOISY_ENV = List.of("JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS");
 
@@ -72,6 +75,9 @@ public class JavaSandbox {
     public RunBatchResult runBatch(RunnerBatchRequest request) throws IOException, InterruptedException {
         if (request.files() == null || request.files().isEmpty()) {
             throw new IllegalArgumentException("Нет файлов для компиляции");
+        }
+        if (request.mainClass() != null && !FQN.matcher(request.mainClass()).matches()) {
+            throw new IllegalArgumentException("Некорректное имя mainClass: " + request.mainClass());
         }
         List<String> inputs = request.inputs() == null ? List.of() : request.inputs();
         if (inputs.size() > maxBatchInputs) {
@@ -151,12 +157,15 @@ public class JavaSandbox {
         }
     }
 
+    /** Читает не больше maxOutputBytes + 1 байта: огромный вывод не должен съесть память runner-а. */
     private String read(Path file) throws IOException {
-        byte[] bytes = Files.readAllBytes(file);
-        if (bytes.length <= maxOutputBytes) {
-            return new String(bytes, StandardCharsets.UTF_8);
+        try (InputStream in = Files.newInputStream(file)) {
+            byte[] bytes = in.readNBytes(maxOutputBytes + 1);
+            if (bytes.length <= maxOutputBytes) {
+                return new String(bytes, StandardCharsets.UTF_8);
+            }
+            return new String(bytes, 0, maxOutputBytes, StandardCharsets.UTF_8) + "\n…[вывод обрезан]";
         }
-        return new String(bytes, 0, maxOutputBytes, StandardCharsets.UTF_8) + "\n…[вывод обрезан]";
     }
 
     /** Убирает путь временной папки (меняется на каждый запуск) и строки «Picked up JAVA_TOOL_OPTIONS». */

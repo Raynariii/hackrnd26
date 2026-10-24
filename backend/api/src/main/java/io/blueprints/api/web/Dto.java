@@ -61,4 +61,22 @@ public final class Dto {
     public record VerifyReport(int baselineVersion, int currentVersion, boolean compiled, boolean behaviorPreserved,
                                int passed, int total, List<VerifyCase> cases, List<BenchmarkPoint> benchmark) {
     }
+
+    // --- Изменения кода: ChangeResult / DecomposeResult ---
+
+    /**
+     * Результат изменения (исправление находки, применённая декомпозиция). {@code verify} — отчёт quality gate:
+     * прошлая версия vs новая на одних входах; изменение коммитится, только если поведение совпало.
+     */
+    public record ChangeResult(ProjectState state, String diff, String description, VerifyReport verify) {
+    }
+
+    public record DecomposeRequest(Integer version, Boolean apply) {
+    }
+
+    public record ProposedClass(String className, String responsibility, List<String> members) {
+    }
+
+    public record DecomposeResult(List<ProposedClass> proposal, List<String> notes, ChangeResult result) {
+    }
 }
