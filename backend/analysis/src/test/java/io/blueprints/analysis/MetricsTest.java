@@ -153,4 +153,98 @@ class MetricsTest {
 
         assertThat(new MetricsCalculator().complexity(method)).isEqualTo(BigO.constant());
     }
+
+    @Test
+    void estimatesStreamPassAsLinear() {
+        String source = """
+                class A {
+                    long f(java.util.List<String> items) {
+                        return items.stream().filter(item -> item != null).count();
+                    }
+                }
+                """;
+
+        MethodDeclaration method = method(source, "f");
+
+        assertThat(new MetricsCalculator().complexity(method)).isEqualTo(BigO.of(1));
+    }
+
+    @Test
+    void estimatesTerminalOperationInsideLoopAsQuadratic() {
+        String source = """
+                class A {
+                    long f(java.util.List<String> items, java.util.List<String> names) {
+                        long total = 0;
+                        for (String item : items) {
+                            total += names.stream().filter(name -> name.equals(item)).count();
+                        }
+                        return total;
+                    }
+                }
+                """;
+
+        MethodDeclaration method = method(source, "f");
+
+        assertThat(new MetricsCalculator().complexity(method)).isEqualTo(BigO.of(2));
+    }
+
+    @Test
+    void estimatesLinearLookupInsideLambdaAsQuadratic() {
+        String source = """
+                class A {
+                    boolean f(java.util.List<String> items, java.util.List<String> allowed) {
+                        return items.stream().anyMatch(item -> allowed.contains(item));
+                    }
+                }
+                """;
+
+        MethodDeclaration method = method(source, "f");
+
+        assertThat(new MetricsCalculator().complexity(method)).isEqualTo(BigO.of(2));
+    }
+
+    @Test
+    void estimatesForEachWithLinearLookupAsQuadratic() {
+        String source = """
+                class A {
+                    void f(java.util.List<String> items, java.util.List<String> allowed) {
+                        items.forEach(item -> allowed.contains(item));
+                    }
+                }
+                """;
+
+        MethodDeclaration method = method(source, "f");
+
+        assertThat(new MetricsCalculator().complexity(method)).isEqualTo(BigO.of(2));
+    }
+
+    @Test
+    void keepsOptionalLambdaOutOfLinearMultiplier() {
+        String source = """
+                class A {
+                    boolean f(java.util.Optional<String> maybe, java.util.List<String> allowed) {
+                        return maybe.map(value -> allowed.contains(value)).orElse(false);
+                    }
+                }
+                """;
+
+        MethodDeclaration method = method(source, "f");
+
+        assertThat(new MetricsCalculator().complexity(method)).isEqualTo(BigO.of(1));
+    }
+
+    @Test
+    void estimatesSortedStreamAsLinearithmic() {
+        String source = """
+                class A {
+                    java.util.List<String> f(java.util.List<String> items) {
+                        return items.stream().sorted().toList();
+                    }
+                }
+                """;
+
+        MethodDeclaration method = method(source, "f");
+
+        assertThat(new MetricsCalculator().complexity(method)).isEqualTo(BigO.nLogN());
+    }
 }
