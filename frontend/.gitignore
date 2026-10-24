@@ -1,2 +1,5 @@
 # артефакт tsc -b, меняется при каждой сборке
 tsconfig.tsbuildinfo
+
+# скриншоты и zip сквозного теста e2e/jury.mjs
+e2e-out/
