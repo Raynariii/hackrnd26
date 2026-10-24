@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CircleAlert, CircleCheck, Info, TriangleAlert, X } from 'lucide-react';
+import { CircleAlert, CircleCheck, Info, TriangleAlert, Wand2, X } from 'lucide-react';
 import type { Diagnostics, Finding, VerifyReport } from '../api/types';
 
 /** Последнее применённое авто-исправление — показываем дифф и даём проверить или отменить. */
@@ -23,7 +23,12 @@ interface Props {
   verifying: boolean;
 }
 
-const SEVERITY: Record<Finding['severity'], string> = { high: 'Высокая', medium: 'Средняя', low: 'Низкая' };
+/** Метка важности; что она значит для пользователя — во всплывающей подсказке. */
+const SEVERITY: Record<Finding['severity'], { label: string; hint: string }> = {
+  high: { label: 'Критично', hint: 'Заметно тормозит или может сломать программу — исправьте в первую очередь' },
+  medium: { label: 'Важно', hint: 'Код работает, но его сложнее читать и менять; исправление безопасно' },
+  low: { label: 'Мелочь', hint: 'Улучшение стиля; на поведение и скорость не влияет' },
+};
 
 function DiffView({ diff }: { diff: string }) {
   const lines = diff.split('\n').filter((l) => !l.startsWith('---') && !l.startsWith('+++'));
@@ -61,7 +66,9 @@ function FindingCard({ f, onSelect, onFix, open, onToggle }: { f: Finding; onSel
         {f.severity === 'high' ? <CircleAlert size={16} /> : f.severity === 'medium' ? <TriangleAlert size={16} /> : <Info size={16} />}
         <strong>{f.title}</strong>
         <span className="finding-meta">
-          <span className="badge">{SEVERITY[f.severity]}</span>
+          <span className="badge" title={SEVERITY[f.severity].hint}>
+            {f.severity !== 'low' && <TriangleAlert size={11} />}{SEVERITY[f.severity].label}
+          </span>
           <span className="muted">{f.file.split('/').at(-1)}:{f.startLine}</span>
         </span>
       </div>
@@ -79,7 +86,7 @@ function FindingCard({ f, onSelect, onFix, open, onToggle }: { f: Finding; onSel
         <div className="finding-fix" onClick={(e) => e.stopPropagation()}>
           {f.fix.autoApplicable ? (
             <button disabled={busy} onClick={fix} title={f.fix.description}>
-              {busy ? 'Исправляем…' : 'Исправить автоматически'}
+              <Wand2 size={14} />{busy ? 'Исправляем…' : 'Исправить автоматически'}
             </button>
           ) : (
             <span className="muted">Нужна ручная правка</span>

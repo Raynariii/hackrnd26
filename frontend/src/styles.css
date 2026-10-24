@@ -686,19 +686,29 @@ tbody tr:hover td { background: var(--island-2); }
 .section-title { display: flex; align-items: center; justify-content: space-between; margin: 22px 0 8px; font-size: 12px; font-weight: 600; color: var(--text-2); }
 .section-title:first-child { margin-top: 0; }
 
-/* ===== проблемы — алерт-карточки ===== */
+/* ===== проблемы — алерт-карточки: ровный фон панели, важность — цветная грань слева и метка ===== */
 .finding {
   position: relative; border-radius: var(--r-lg); padding: 14px 14px 14px 16px; overflow: hidden;
-  background: color-mix(in srgb, var(--sev, var(--text-3)) 6%, var(--island));
+  background: var(--island);
   border: 1px solid color-mix(in srgb, var(--sev, var(--text-3)) 22%, var(--border));
 }
 .finding::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--sev, var(--text-3)); border-radius: 3px 0 0 3px; }
 .finding.sev-high { --sev: var(--err); }
 .finding.sev-medium { --sev: var(--warn); }
 .finding.sev-low { --sev: var(--text-3); }
-.finding:hover { border-color: color-mix(in srgb, var(--sev, var(--accent)) 45%, var(--border)); background: color-mix(in srgb, var(--sev, var(--text-3)) 9%, var(--island)); }
+.finding:hover {
+  border-color: color-mix(in srgb, var(--sev, var(--accent)) 45%, var(--border));
+  background: var(--island-2);
+}
 .finding.open { border-color: color-mix(in srgb, var(--sev, var(--accent)) 55%, var(--border)); }
-.finding .badge { border-radius: 999px; }
+.finding .badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; cursor: help; }
+/* «Исправить автоматически» — нейтральная кнопка, не синяя: синий остаётся только у главного действия */
+.finding-fix button {
+  background: color-mix(in srgb, var(--text) 13%, var(--island)); color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--text) 16%, var(--island));
+}
+.finding-fix button:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 19%, var(--island)); }
+.finding-fix button svg { color: var(--ok-icon); }
 
 /* ===== карточки и диалог — крупнее скругления ===== */
 .applied-fix, .decompose-class, .vs-case, .inspector-form { border-radius: var(--r-lg); }
