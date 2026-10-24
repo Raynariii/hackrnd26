@@ -704,9 +704,10 @@ tbody tr:hover td { background: var(--island-2); }
 .finding .badge { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; cursor: help; }
 /* «Исправить автоматически» — нейтральная кнопка, не синяя: синий остаётся только у главного действия */
 .finding-fix button {
-  background: var(--island-2); color: var(--text); border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--text) 13%, var(--island)); color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--text) 16%, var(--island));
 }
-.finding-fix button:hover:not(:disabled) { background: var(--pressed); border-color: color-mix(in srgb, var(--text) 18%, var(--border)); }
+.finding-fix button:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 19%, var(--island)); }
 .finding-fix button svg { color: var(--ok-icon); }
 
 /* ===== карточки и диалог — крупнее скругления ===== */
