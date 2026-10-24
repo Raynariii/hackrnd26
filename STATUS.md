@@ -28,15 +28,27 @@
       (for / for-each / while / do-while, `loopBody/loopBack/loopExit`, `while(true)` без выхода), call, operation,
       return, switch/case (провал без break, стрелочные case, «нет совпадений»), break/continue с метками,
       try-with-resources/catch/finally, throw. `parent` = контейнер (цикл, ветка условия, case, try, catch, finally).
-      `meta.covers` — id выражений внутри блока: по нему `Finding.nodeIds` привязываются к блокам. 17 тестов (PR — см. ниже)
+      `meta.covers` — id выражений внутри блока: по нему `Finding.nodeIds` привязываются к блокам. 17 тестов (PR #5)
 - [ ] overview: рёбра `call` (SymbolSolver, с откатом на имена)
 - [x] узел `raw` для неподдерживаемых конструкций в блок-схеме (локальные классы, synchronized, yield; сбой разбора
-      оператора откатывается в `raw`, а не роняет граф)
-- [ ] операции: `editNode`, `insertAfter`, `delete`, `move`, `wrapIf`, `wrapLoop`, `extractMethod`
+      оператора откатывается в `raw`, а не роняет граф) (PR #5)
+- [x] операции `editNode`, `insertAfter`, `delete` (`DefaultGraphOperations`, 27 тестов; PR — feat/core-graph-ops):
+      цели — блоки блок-схемы (операторы, case, catch, finally, `:start`), члены обзора (метод, поле, тип) и id
+      выражения из `Finding.nodeIds` (→ его оператор). Правка идёт текстом строго в границах AST-узлов, затем файл
+      перепарсивается: нетронутый код байт-в-байт, вставка выровнена по соседям (табы, CRLF), ошибка → 422 без
+      изменения модели. Каждый тест проверяет, что результат компилируется javac
+- [ ] операции: `move`, `wrapIf`, `wrapLoop`, `extractMethod`
 - [ ] round-trip тест на всём `corpus/`
-- [ ] откат на pretty-print, если LexicalPreservingPrinter падает на правке (G6)
+- [x] откат на pretty-print, если LexicalPreservingPrinter падает (G6): `CodeGenerator.printReport` → `reformatted`
+      (список файлов, напечатанных без сохранения форматирования); операции графа LPP для правок не используют
 **Для фронта (роль 3):** находка → блок: блок, у которого `id` или `meta.covers` содержит любой из `Finding.nodeIds`.
 `start` блок-схемы покрывает id метода (находки уровня метода, например long-method).
+**Для фронта (роль 3), `POST /graph/ops`:** `editNode` у condition/loop/switch меняет только заголовок
+(`code` = `x > 0` или `int i = 0; i < n; i++`), у case — метки (`1, 2` / `default`), у catch — параметр.
+`insertAfter` после `<метод>:start` / case / catch / finally — в начало их тела, после контейнера — после всей
+конструкции. Палитра: `kind` + короткий `code` (`condition` + `x > 0` → `if (x > 0) {}`, `loop` + `x : xs` →
+for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`. После операции id меняются — перезапросите граф.
+**Для роли 4:** `CodeGenerator.printReport(model).reformatted()` можно отдать в ответе как предупреждение (G6).
 **Блокеры:** —
 
 ## Роль 2 — анализ и оптимизация
