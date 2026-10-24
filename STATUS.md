@@ -46,7 +46,12 @@
       insertAfter, члены класса — после другого члена; `extractMethod` — private (static, если исходный static) метод
       `name`: параметры — читаемые локальные переменные, возврат — единственная переменная, нужная дальше;
       `throws` и type-параметры копируются. Отказ (422): return / break / continue наружу, >1 выходной переменной, `var`
-- [ ] round-trip тест на всём `corpus/`
+- [x] round-trip тест на всём `corpus/` (`CorpusRoundTripTest`, PR — feat/core-corpus-roundtrip): каждая папка корпуса
+      + `core/src/test/resources/scope/ScopeSample.java` (scope 1–4 + бонус: sealed/record/enum, generics, лямбды,
+      Stream, switch-выражения с yield, text block, try-with-resources, multi-catch, метки, анонимный класс,
+      instanceof-паттерны): разбор без ошибок, печать байт-в-байт, overview и блок-схема каждого метода согласованы,
+      insertAfter `:start` на каждом методе. Новый пример корпуса проверяется автоматически; `raw`-конструкции
+      печатаются в лог теста (сейчас только `synchronized`) — для `docs/scope.md` (роль 4)
 - [x] откат на pretty-print, если LexicalPreservingPrinter падает (G6): `CodeGenerator.printReport` → `reformatted`
       (список файлов, напечатанных без сохранения форматирования); операции графа LPP для правок не используют
 **Для фронта (роль 3):** находка → блок: блок, у которого `id` или `meta.covers` содержит любой из `Finding.nodeIds`.
