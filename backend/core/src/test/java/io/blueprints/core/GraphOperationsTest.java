@@ -669,6 +669,21 @@ class GraphOperationsTest {
                 .isInstanceOf(UnsupportedGraphOpException.class);
     }
 
+    @Test
+    void wrapRejectsDeclarationUsedAfterBlock() {
+        Fixture f = new Fixture("""
+                static int f(int x) {
+                    int k = x * 2;
+                    int tmp = 1;
+                    return k;
+                }""");
+
+        assertThatThrownBy(() -> ops.apply(f.model, op("wrapIf", ids(f, "f", NodeKind.VARIABLE, "k = x * 2"), "x > 0")))
+                .isInstanceOf(UnsupportedGraphOpException.class).hasMessageContaining("Переменная k нужна после блока");
+        String src = apply(f, op("wrapIf", ids(f, "f", NodeKind.VARIABLE, "tmp = 1"), "x > 0")); // tmp дальше не нужна
+        assertThat(src).contains("if (x > 0) {");
+    }
+
     // ------------------------------------------------------------ move
 
     private static GraphOp move(List<String> ids, String targetId) {
@@ -851,5 +866,17 @@ class GraphOperationsTest {
         String src = apply(f, extract(ids(f, "f", NodeKind.CALL, "toUpperCase"), "print"));
 
         assertThat(src).contains("print(i, n);").contains("private static void print(int i, String n) {");
+    }
+
+    @Test
+    void extractKeepsTypeSpellingFromSource() {
+        Fixture f = new Fixture("""
+                static int f(Map<String, Integer> m, int... extra) {
+                    int s = m.size() + extra.length;
+                    return s;
+                }""");
+        String src = apply(f, extract(ids(f, "f", NodeKind.VARIABLE, "int s"), "count"));
+
+        assertThat(src).contains("private static int count(Map<String, Integer> m, int[] extra) {");
     }
 }
