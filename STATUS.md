@@ -21,6 +21,7 @@
 - [ ] Запросить у менторов тестовые монолиты организаторов и финальный формат сдачи (G8)
 - [ ] Выдать доступ к приватному репозиторию проверяющим Axenix к 25.10 08:00 (или уточнить способ передачи)
 - [ ] Провести интеграцию №1 (H10) и пересмотреть план по LEAD.md §5
+- [x] Роль 2 разделена на подроли 2a–2d для параллельной работы нескольких агентов (D11, `PLAN.md` §6.1)
 **Блокеры:** —
 
 ## Роль 1 — ядро Java ↔ граф
@@ -78,31 +79,58 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 **Блокеры:** —
 
 ## Роль 2 — анализ и оптимизация
-- [x] правила (10, `backend/analysis/.../rules`): вложенные циклы по одной коллекции, `contains/indexOf/remove` в цикле,
-      конкатенация строк в цикле, `LinkedList.get(i)` в цикле, глубокая вложенность/цикломатика, длинный метод,
-      дублирование (нормализованные фрагменты), пустой `catch`, «магические» числа, god-class — 18 тестов
-- [x] метрики: цикломатическая сложность, максимальная вложенность, Big O на метод (число вложенных циклов ×
-      таблица стоимости операций коллекций: `ArrayList.contains` O(n), `HashSet.contains` O(1), `TreeMap.get` O(log n),
-      сортировка O(n log n)); `Finding.complexity` = «до/после» для всех найденных дефектов
-- [x] авто-исправления для 4 правил (`FixEngine`): HashSet-индекс вместо `List.contains`, `StringBuilder` вместо `+=`,
-      константа вместо «магического» числа, for-each вместо `LinkedList.get(i)`; каждая правка проверяется javac в тесте,
-      отказ от небезопасных случаев (переменная объявлена в цикле, коллекция меняется, строку читают в цикле)
-- [ ] `POST /fixes/{id}` в api: подключить `FixEngine.apply(files, findingId)` — запрос роли 4 (см. «Запросы»)
-- [x] декомпозиция монолита: `Decomposer` предлагает разбиение на `Parser / Analyzer / Optimizer / Main` по именам
-      методов и вызовам, с полями, которые нужно перенести (v1 — только предложение, без перемещения кода)
-- [ ] `POST /decompose` в api (apply=false → предложение) — запрос роли 4 (см. «Запросы»)
-- [ ] LLM-помощник (опц.)
-- [x] прогон анализатора по всему `corpus/` (`CorpusAnalysisTest`): любой новый пример корпуса проверяется автоматически —
-      разбор без ошибок, метрики по каждому методу, у каждой находки реальный файл, строки и `nodeIds` (PR #11)
-- [x] стык с ядром: `FindingNodeBindingTest` — каждая находка привязывается к узлу графа через `id` или `meta.covers`
-      (`methodFlow` роли 1) (PR #9)
-- [x] устойчивость: падение одного правила или файл с ошибкой разбора не обнуляют панель «Проблемы» (PR #4)
-**Известное ограничение:** LexicalPreservingPrinter не выравнивает отступы у вставленных операторов
-(`var _index = new java.util.HashSet<>(...)` печатается на уровень выше) — код валиден и компилируется,
-это косметика на полировку.
-**PR:** [#3](https://github.com/Raynariii/hackrnd26/pull/3) (правила, метрики, авто-исправления, декомпозиция),
-[#4](https://github.com/Raynariii/hackrnd26/pull/4) (устойчивость), [#9](https://github.com/Raynariii/hackrnd26/pull/9)
-(стык с ядром) — **53 теста** модуля `analysis` зелёные, CI зелёный (backend, frontend, contracts, compose).
+> Роль делится на подроли **2a / 2b / 2c / 2d** — несколько агентов работают параллельно (D11). Зоны по файлам — `CLAUDE.md`,
+> правила (worktree, реестры, слияние по одному) — `PLAN.md` §6.1. Каждый агент правит **только свою подсекцию** ниже.
+> Захват задачи: допишите к пункту `(в работе: 2x, ветка …)` отдельным маленьким коммитом или карточкой в Notion.
+
+**Сделано до разделения** (53 теста модуля зелёные; PR [#3](https://github.com/Raynariii/hackrnd26/pull/3),
+[#4](https://github.com/Raynariii/hackrnd26/pull/4), [#9](https://github.com/Raynariii/hackrnd26/pull/9), #11, #15):
+- [x] правила (10, `rules/`): вложенные циклы по одной коллекции, `contains/indexOf/remove` в цикле, конкатенация строк
+      в цикле, `LinkedList.get(i)` в цикле, глубокая вложенность/цикломатика, длинный метод, дублирование, пустой `catch`,
+      «магические» числа, god-class — 18 тестов
+- [x] метрики: цикломатика, вложенность, Big O на метод (вложенность циклов × таблица стоимости операций коллекций);
+      `Finding.complexity` = «до/после»
+- [x] авто-исправления для 4 правил (`FixEngine`): HashSet-индекс, `StringBuilder`, константа, for-each вместо
+      `LinkedList.get(i)`; каждая правка проверяется javac в тесте, небезопасные случаи — отказ
+- [x] декомпозиция v1: `Decomposer` предлагает разбиение на `Parser / Analyzer / Optimizer / Main` (без перемещения кода)
+- [x] прогон по всему `corpus/` (`CorpusAnalysisTest`), стык с ядром (`FindingNodeBindingTest`), устойчивость (PR #4)
+- [x] `POST /fixes/{id}` (с quality gate) и `POST /decompose` (предложение) подключены в api ролью 4 (PR #21, #23)
+
+### 2a — правила, метрики, общие файлы модуля
+- [ ] **P0, разблокер — первым, отдельным PR.** Чисто механический рефакторинг без изменения поведения (все 53 теста
+      зелёные без правок ассертов, публичный API модуля прежний):
+      `rules/Rules.java` — реестр правил, `Analyzer.defaultRules()` делегирует ему;
+      `fixes/Fixer` (интерфейс: `kind()`, `supports(Finding)`, `apply(...)`) + `fixes/Fixers.java` — реестр,
+      4 ветки `switch` из `FixEngine` разнесены по классам `fixes/*Fix.java`, `FixEngine` остаётся фасадом;
+      `Analyzer` выставляет `Fix.autoApplicable` по `Fixers.supports(finding)`, а не по правилу;
+      пакет `decompose/` для внутренностей `Decomposer` (сам `Decomposer` — фасад).
+      Это единственная задача, которой разрешено трогать файлы 2b и 2c. До её слияния 2b/2c только добавляют новые файлы.
+- [ ] P1 Big O на фрагмент (выделение блоков в блок-схеме), не только на метод — `PLAN.md` §4
+- [ ] P1 стоимость Stream API и лямбд в `CostModel` (бонус scope): `stream()…collect` / `sorted()` / `anyMatch` в цикле
+- [ ] P1 прогон по монолитам организаторов, как только они появятся в `corpus/` (G8): нет падений и явных ложных находок
+- [ ] P2 новые правила: `Pattern.compile` / `String.format` в цикле; рекурсия без мемоизации (экспоненциальная оценка)
+**Блокеры:** —
+
+### 2b — авто-исправления
+- [ ] P1 (после 2a-P0) авто-исправление для `nested-loop-same-collection`: индекс `HashMap`/`HashSet` по ключу, отказ в
+      небезопасных случаях; тест — javac + вывод до/после совпадает
+- [ ] P1 отступы вставленных операторов (`var _index = …` печатается на уровень выше — «Известное ограничение»)
+- [ ] P1 тест на корпусе: каждое `autoApplicable` исправление на `corpus/` применяется и компилируется
+- [ ] P2 `extract-method` для `long-method` / `duplicate-code` через `GraphOperations.extractMethod` ядра (роль 1)
+**Известное ограничение:** LexicalPreservingPrinter не выравнивает отступы у вставленных операторов — код валиден.
+**Блокеры:** —
+
+### 2c — декомпозиция монолита
+- [ ] P1 (после 2a-P0) `apply=true` v1 (G7): перенос static-методов и static-вложенных классов в новые классы,
+      вызовы квалифицируются; результат компилируется (тест javac) и проходит дифф на корпусе. Вход/выход — `List<SourceFile>`,
+      как у `FixEngine`; подключение `apply=true` в `POST /decompose` (сейчас 501) — запрос роли 4
+- [ ] P1 предложение по графу зависимостей методов/полей (label propagation), имена — только как подсказка
+- [ ] P2 метрика качества разбиения (вызовы между предложенными классами) — в `notes` для жюри
+**Блокеры:** —
+
+### 2d — LLM-помощник (опц., первый на урезание по LEAD.md §5)
+- [ ] P2 `llm/`: интерфейс советчика + реализация через HTTP-клиент; ключ только из переменной окружения api, не в git;
+      предложение показывается только после quality gate (D6). Без ключа — модуль молча выключен, тесты без сети
 **Блокеры:** —
 
 ## Роль 3 — фронтенд
@@ -122,7 +150,8 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 
 ## Роль 4 — песочница, API, сборка
 - [x] `POST /internal/run-batch` в runner: javac один раз, затем `java` на каждом stdin; из вывода убраны путь
-      временной папки и `Picked up JAVA_TOOL_OPTIONS` (переменные `*_JAVA_OPTIONS` не передаются в процесс) (G2, PR #19)
+      временной папки и `Picked up JAVA_TOOL_OPTIONS` (переменные `*_JAVA_OPTIONS` не передаются в процесс); `mainClass`
+      проверяется как FQN, stdout/stderr читаются не больше лимита (G2, PR #19)
 - [x] `POST /verify` (G3, PR #19): эталон v1 и текущая версия — по одному run-batch на одних входах.
       Входы: `inputs` запроса + `corpus/<пример>/inputs/*.txt` (если файлы проекта совпадают с примером корпуса) +
       stdin прошлых `/run` + 6 граничных (`fuzz`, по умолчанию вкл.); дубли убираются, ≤ 40. Нормализация
@@ -132,6 +161,12 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
       `baseline_compile_error`. `benchmark=true` → `benchmarkInputs` или `bench-<n>.txt` из корпуса, время до/после.
       Сквозная проверка (api + runner, `00-hello`): эквивалентная правка — 8/8 ✓ за ~2,7 с; изменённая логика и
       исключение — точный дифф. В compose корпус монтируется в api (`./corpus:/corpus:ro`)
+- [x] `POST /fixes/{findingId}` (запрос роли 2, PR — `feat/api-fixes-decompose`): `FixEngine.apply` → **quality gate**
+      (`QualityGate`: новая версия vs текущая через verify — компиляция + дифф-тесты) → коммит новой версии.
+      Ответ `ChangeResult` = state + unified diff + `description` + `verify` (отчёт gate). Ошибки 422:
+      `fix_not_applicable`, `quality_gate_failed` (сессия не меняется), `parse_error`; 409 — устаревшая версия.
+      Сквозная проверка на `OrdersMonolith`: StringBuilder, for-each по LinkedList, константы — 3 исправления подряд, gate 6/6
+- [x] `POST /decompose` (запрос роли 2): `Decomposer.propose` → `proposal` + `notes`; `apply=true` → 501 (G7)
 - [ ] bench-входы `corpus/*/inputs/bench-*.txt` растущего размера (G4)
 - [ ] монолиты организаторов → `corpus/` (G8, как только лид их получит)
 - [ ] `docs/scope.md`: матрица «конструкция → граф / генерация / тест» по разделам 1–4 + бонус (G9)
@@ -152,8 +187,10 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 
 | Кто просит | Что | Кому | Статус |
 |---|---|---|---|
-| Роль 2 | `POST /api/projects/{id}/fixes/{findingId}`: вызвать `io.blueprints.analysis.FixEngine#apply(files, findingId)`, закоммитить новую версию и вернуть `ChangeResult` (state + diff); `FixNotApplicableException` → 409/422 с текстом причины. Контракт и контроллер — зона роли 4. | Роль 4 | Открыт |
-| Роль 2 | `POST /api/projects/{id}/decompose`: `new Decomposer().propose(session.model())` → `DecomposeResult.proposal` (apply=false, v1); при apply=true пока 501 `not_implemented`. | Роль 4 | Открыт |
+| Роль 2 | `POST /api/projects/{id}/fixes/{findingId}`: вызвать `io.blueprints.analysis.FixEngine#apply(files, findingId)`, закоммитить новую версию и вернуть `ChangeResult` (state + diff); `FixNotApplicableException` → 409/422 с текстом причины. Контракт и контроллер — зона роли 4. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
+| Роль 4 | В `GET /diagnostics` у `collection-lookup-in-loop` стоит `fix.autoApplicable=true`, но `FixEngine.apply` отказывает (коллекция меняется в цикле — `00-hello`, `OrdersMonolith`). Кнопка «Применить» в UI обещает то, чего нет: выставлять `autoApplicable` по тем же проверкам, что и `apply`. | Роль 2 | Открыт |
+| Роль 2 | `POST /api/projects/{id}/decompose`: `new Decomposer().propose(session.model())` → `DecomposeResult.proposal` (apply=false, v1); при apply=true пока 501 `not_implemented`. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
+| Роль 4 | В `GET /diagnostics` у `collection-lookup-in-loop` стоит `fix.autoApplicable=true`, но `FixEngine.apply` отказывает (коллекция меняется в цикле — `00-hello`, `OrdersMonolith`). Кнопка «Применить» в UI обещает то, чего нет: выставлять `autoApplicable` по тем же проверкам, что и `apply`. | Роль 2 | Открыт |
 
 ## Журнал интеграций
 | Когда | Результат | Что сломалось |

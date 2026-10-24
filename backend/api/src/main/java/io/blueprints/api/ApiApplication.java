@@ -1,6 +1,8 @@
 package io.blueprints.api;
 
 import io.blueprints.analysis.Analyzer;
+import io.blueprints.analysis.Decomposer;
+import io.blueprints.analysis.FixEngine;
 import io.blueprints.core.graph.DefaultGraphBuilder;
 import io.blueprints.core.graph.GraphBuilder;
 import io.blueprints.core.model.CodeGenerator;
@@ -41,5 +43,15 @@ public class ApiApplication {
     @Bean
     Analyzer analyzer() {
         return Analyzer.withDefaultRules();
+    }
+
+    @Bean
+    FixEngine fixEngine() {
+        return new FixEngine();
+    }
+
+    @Bean
+    Decomposer decomposer() {
+        return new Decomposer();
     }
 }
