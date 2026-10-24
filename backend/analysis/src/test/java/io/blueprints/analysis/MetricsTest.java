@@ -1,6 +1,7 @@
 package io.blueprints.analysis;
 
 import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.expr.MethodCallExpr;
 import io.blueprints.core.model.JavaProjectParser;
 import io.blueprints.core.model.ProjectModel;
 import io.blueprints.core.model.SourceFile;
@@ -246,5 +247,68 @@ class MetricsTest {
         MethodDeclaration method = method(source, "f");
 
         assertThat(new MetricsCalculator().complexity(method)).isEqualTo(BigO.nLogN());
+    }
+
+    @Test
+    void estimatesSelectedFragmentIncludingEnclosingLoops() {
+        String source = """
+                class A {
+                    boolean f(java.util.List<String> items, java.util.List<String> allowed) {
+                        for (String item : items) {
+                            if (allowed.contains(item)) {
+                                return true;
+                            }
+                        }
+                        return false;
+                    }
+                }
+                """;
+        ProjectModel model = new JavaProjectParser().parse(List.of(new SourceFile("A.java", source)));
+        MethodCallExpr contains = model.units().values().iterator().next().findAll(MethodCallExpr.class).stream()
+                .filter(call -> call.getNameAsString().equals("contains"))
+                .findFirst()
+                .orElseThrow();
+
+        BigO complexity = new MetricsCalculator().complexityOf(model, List.of(Ast.nodeId(model, contains)));
+
+        assertThat(complexity).isEqualTo(BigO.of(2));
+    }
+
+    @Test
+    void estimatesWholeMethodByStartBlock() {
+        String source = """
+                class A {
+                    boolean f(java.util.List<String> items, java.util.List<String> allowed) {
+                        for (String item : items) {
+                            if (allowed.contains(item)) {
+                                return true;
+                            }
+                        }
+                        return false;
+                    }
+                }
+                """;
+        ProjectModel model = new JavaProjectParser().parse(List.of(new SourceFile("A.java", source)));
+        MethodDeclaration method = model.units().values().iterator().next()
+                .findFirst(MethodDeclaration.class).orElseThrow();
+
+        BigO complexity = new MetricsCalculator().complexityOf(model, List.of(Ast.nodeId(model, method) + ":start"));
+
+        assertThat(complexity).isEqualTo(BigO.of(2));
+    }
+
+    @Test
+    void ignoresUnknownFragmentIds() {
+        String source = """
+                class A {
+                    int f() {
+                        return 1;
+                    }
+                }
+                """;
+        ProjectModel model = new JavaProjectParser().parse(List.of(new SourceFile("A.java", source)));
+
+        assertThat(new MetricsCalculator().complexityOf(model, List.of("g404", "<нет>:start")))
+                .isEqualTo(BigO.constant());
     }
 }
