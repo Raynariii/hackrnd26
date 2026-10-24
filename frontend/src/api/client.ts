@@ -1,5 +1,6 @@
 import type { ApiError, ChangeResult, DecomposeResult, Diagnostics, Graph, GraphOpRequest, ProjectState, RunResult, SourceFile, VerifyReport, VerifyRequest } from './types';
 import { ApiRequestError } from './errors';
+import { readExportHeaders, type ExportFile } from './download';
 
 export { ApiRequestError };
 
@@ -9,11 +10,13 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  if (!response.ok) {
-    const error = (await response.json().catch(() => ({ error: 'http_error', message: response.statusText }))) as ApiError;
-    throw new ApiRequestError(response.status, error);
-  }
+  if (!response.ok) throw await failure(response);
   return (await response.json()) as T;
+}
+
+async function failure(response: Response): Promise<ApiRequestError> {
+  const error = (await response.json().catch(() => ({ error: 'http_error', message: response.statusText }))) as ApiError;
+  return new ApiRequestError(response.status, error);
 }
 
 const realApi = {
@@ -35,6 +38,12 @@ const realApi = {
   /** Предложение разбиения монолита на классы (Decomposer роли 2). apply=true на сервере пока 501 — не шлём. */
   decompose: (id: string, version: number) =>
     request<DecomposeResult>('POST', `/projects/${id}/decompose`, { version, apply: false }),
+  /** Zip: текущий код + JUnit golden-master тесты против версии 1 + отчёт проверки; сервер сам прогоняет verify. */
+  exportProject: async (id: string): Promise<ExportFile> => {
+    const response = await fetch(`/api/projects/${id}/export`);
+    if (!response.ok) throw await failure(response);
+    return readExportHeaders(response.headers, await response.blob(), `project-${id}.zip`);
+  },
 };
 
 export type Api = typeof realApi;

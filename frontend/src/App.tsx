@@ -3,6 +3,7 @@ import { api, ApiRequestError } from './api/client';
 import type { DecomposeResult, Diagnostics, Finding, Graph, GraphNode, GraphOpRequest, ProjectState, RunResult, SourceFile, SourceRange, VerifyReport } from './api/types';
 import { AnalysisPanel, type AppliedFix } from './components/AnalysisPanel';
 import { DecomposePanel } from './components/DecomposePanel';
+import { exportSummary } from './api/download';
 import { BottomPanel } from './components/BottomPanel';
 import { CodeEditor } from './components/CodeEditor';
 import { GraphCanvas } from './components/GraphCanvas';
@@ -31,6 +32,8 @@ export function App() {
   const [overview, setOverview] = useState<Graph | null>(null);
   const [decomp, setDecomp] = useState<{ version: number; result: DecomposeResult } | null>(null);
   const [decomposing, setDecomposing] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exported, setExported] = useState<{ fileName: string; summary: string; preserved: boolean | null } | null>(null);
   const [activeClass, setActiveClass] = useState<string | null>(null);
   const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
   /** Выделенные блоки; последний — основной (его показывает инспектор и подсвечивает код). */
@@ -210,6 +213,27 @@ export function App() {
       setBeforeFix(null);
     });
 
+  /** Zip с текущим кодом и JUnit golden-master тестами против версии 1 — сдаётся как «автотесты и результат». */
+  const exportProject = () =>
+    guard(async () => {
+      if (!project) return;
+      setExporting(true);
+      try {
+        const file = await api.exportProject(project.id);
+        const url = URL.createObjectURL(file.blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = file.fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+        setExported({ fileName: file.fileName, summary: exportSummary(file.passed, file.behaviorPreserved), preserved: file.behaviorPreserved });
+      } finally {
+        setExporting(false);
+      }
+    });
+
   const proposeDecomposition = () =>
     guard(async () => {
       if (!project) return;
@@ -294,7 +318,16 @@ export function App() {
         })}>Обзор</button>
         <button disabled={!project || running} onClick={runProgram}>{running ? 'Запуск…' : '▶ Запуск'}</button>
         <button disabled={!project || verifying} onClick={runVerify}>{verifying ? 'Проверяем…' : 'Проверить'}</button>
+        <button disabled={!project || exporting} onClick={exportProject}
+          title="Zip: текущий код, JUnit-тесты против версии 1 (golden master) и отчёт проверки; запуск — mvn test">
+          {exporting ? 'Готовим архив…' : '⬇ Экспорт с тестами'}
+        </button>
         {project && <span className="muted">v{project.version}</span>}
+        {exported && (
+          <span className={`export-note ${exported.preserved === false ? 'fail' : 'muted'}`} title={exported.fileName}>
+            ⬇ {exported.fileName}{exported.summary && ` · ${exported.summary}`}
+          </span>
+        )}
         {error && <span className="error">{error}</span>}
       </header>
 
@@ -324,7 +357,8 @@ export function App() {
           <div className="empty">Импортируйте .java-файл, чтобы построить граф</div>
         )}
         {showVerify && verify && (
-          <VerifyScreen report={verify} running={verifying} onRerun={runVerify} onClose={() => setShowVerify(false)} />
+          <VerifyScreen report={verify} running={verifying} onRerun={runVerify} onClose={() => setShowVerify(false)}
+            onExport={exportProject} exporting={exporting} />
         )}
       </main>
 
