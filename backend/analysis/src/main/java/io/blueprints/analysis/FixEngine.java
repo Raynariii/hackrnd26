@@ -3,6 +3,7 @@ package io.blueprints.analysis;
 import io.blueprints.analysis.fixes.FixAnchors;
 import io.blueprints.analysis.fixes.Fixer;
 import io.blueprints.analysis.fixes.Fixers;
+import io.blueprints.analysis.fixes.Reindent;
 import io.blueprints.core.model.CodeGenerator;
 import io.blueprints.core.model.JavaProjectParser;
 import io.blueprints.core.model.ProjectModel;
@@ -51,8 +52,11 @@ public final class FixEngine {
         if (refusal != null) {
             throw new FixNotApplicableException(refusal);
         }
+        // Отступ нужен до правки: после вставки номера строк уже сдвинуты.
+        java.util.Optional<Reindent> reindent = Reindent.of(model, finding, files);
         String description = fixer.apply(model, finding);
-        return new Applied(finding, codeGenerator.print(model), description);
+        List<SourceFile> printed = codeGenerator.print(model);
+        return new Applied(finding, reindent.map(step -> step.apply(printed)).orElse(printed), description);
     }
 
     private static Finding find(ProjectModel model, String findingId) {

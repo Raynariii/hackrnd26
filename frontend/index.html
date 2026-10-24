@@ -1,9 +1,17 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
     <title>Java Blueprints</title>
+    <script>
+      // Тема до первой отрисовки, чтобы не мигало светлым: сохранённый выбор или тёмная по умолчанию.
+      try {
+        var t = JSON.parse(localStorage.getItem('jb.theme') || '"dark"');
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>
