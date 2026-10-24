@@ -105,7 +105,8 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 
 ## Роль 4 — песочница, API, сборка
 - [x] `POST /internal/run-batch` в runner: javac один раз, затем `java` на каждом stdin; из вывода убраны путь
-      временной папки и `Picked up JAVA_TOOL_OPTIONS` (переменные `*_JAVA_OPTIONS` не передаются в процесс) (G2, PR #19)
+      временной папки и `Picked up JAVA_TOOL_OPTIONS` (переменные `*_JAVA_OPTIONS` не передаются в процесс); `mainClass`
+      проверяется как FQN, stdout/stderr читаются не больше лимита (G2, PR #19)
 - [x] `POST /verify` (G3, PR #19): эталон v1 и текущая версия — по одному run-batch на одних входах.
       Входы: `inputs` запроса + `corpus/<пример>/inputs/*.txt` (если файлы проекта совпадают с примером корпуса) +
       stdin прошлых `/run` + 6 граничных (`fuzz`, по умолчанию вкл.); дубли убираются, ≤ 40. Нормализация
