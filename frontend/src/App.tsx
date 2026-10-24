@@ -554,7 +554,7 @@ export function App() {
             <span className="chip-metric" title="Типы: классы, интерфейсы, enum, record"><Box size={13} />Типы <b>{overview.nodes.filter((n) => ['class', 'interface', 'enum', 'record'].includes(n.kind)).length}</b></span>
             <span className="chip-metric" title="Методы и конструкторы"><SquareFunction size={13} />Методы <b>{overview.nodes.filter((n) => n.kind === 'method' || n.kind === 'constructor').length}</b></span>
             <span className={`chip-metric ${diagnostics.findings.some((f) => f.severity === 'high') ? 'err' : ''}`} title="Проблем высокой важности">
-              <CircleAlert size={13} />Важных <b>{diagnostics.findings.filter((f) => f.severity === 'high').length}</b>
+              <CircleAlert size={13} />Срочных <b>{diagnostics.findings.filter((f) => f.severity === 'high').length}</b>
             </span>
             <span className={`chip-metric ${diagnostics.metrics.some((m) => /n\^?[2-9²³]/.test(m.complexity ?? '')) ? 'warn' : ''}`} title="Методы со сложностью выше линейной">
               <TriangleAlert size={13} />Выше O(n) <b>{diagnostics.metrics.filter((m) => /n\^?[2-9²³]|2\^n|n!/.test(m.complexity ?? '')).length}</b>

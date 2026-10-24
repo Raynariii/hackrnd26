@@ -28,7 +28,7 @@ export const kindColor = (kind: GraphNode['kind']) => KIND_COLORS.get(kind) ?? N
 const titleColor = (kind: GraphNode['kind']) => KIND_COLORS.get(kind) ?? 'var(--node-title)';
 
 const SEVERITY_ORDER: Finding['severity'][] = ['high', 'medium', 'low'];
-const SEVERITY_LABEL: Record<Finding['severity'], string> = { high: 'высокая', medium: 'средняя', low: 'низкая' };
+const SEVERITY_LABEL: Record<Finding['severity'], string> = { high: 'исправить сейчас', medium: 'стоит исправить', low: 'совет' };
 
 function worstSeverity(list: Finding[]): Finding['severity'] {
   return SEVERITY_ORDER.find((s) => list.some((f) => f.severity === s)) ?? 'high';
