@@ -16,6 +16,7 @@ import com.github.javaparser.ast.stmt.ContinueStmt;
 import com.github.javaparser.ast.stmt.LocalClassDeclarationStmt;
 import com.github.javaparser.ast.stmt.ReturnStmt;
 import com.github.javaparser.ast.stmt.YieldStmt;
+import com.github.javaparser.ast.type.Type;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.NodeList;
@@ -573,6 +574,7 @@ public final class DefaultGraphOperations implements GraphOperations {
     private void wrap(ProjectModel model, GraphOp op, boolean isIf) {
         List<Node> sel = selection(model, ids(op), false);
         String header = isIf ? ifHeader(requireCode(op)) : loopHeader(requireCode(op));
+        requireNoEscapingDeclarations(sel);
         Change change = change(model, sel.get(0));
         SourceText st = change.text();
         Node first = sel.get(0);
@@ -582,6 +584,26 @@ public final class DefaultGraphOperations implements GraphOperations {
         st.replace(leadingStart(st, first), st.end(last), header + " {" + st.newline() + inner
                 + st.reindent(blockText(st, first, last), inner) + st.newline() + indent + "}");
         commit(model, change);
+    }
+
+    /** Переменная, объявленная в выделении и нужная после него, после обёртки окажется вне области видимости. */
+    private static void requireNoEscapingDeclarations(List<Node> sel) {
+        CallableDeclaration<?> callable = sel.get(0).findAncestor(CallableDeclaration.class).orElse(null);
+        if (callable == null) {
+            return;
+        }
+        Set<String> after = namesAfter(callable, sel.get(sel.size() - 1));
+        List<String> escaping = new ArrayList<>();
+        for (Node n : sel) {
+            if (n instanceof ExpressionStmt es && es.getExpression() instanceof VariableDeclarationExpr v) {
+                v.getVariables().stream().map(VariableDeclarator::getNameAsString).filter(after::contains)
+                        .forEach(escaping::add);
+            }
+        }
+        if (!escaping.isEmpty()) {
+            throw new UnsupportedGraphOpException("Переменная " + String.join(", ", escaping)
+                    + " нужна после блока — после обёртки она станет недоступна. Выделите и её использования");
+        }
     }
 
     private String ifHeader(String code) {
@@ -816,7 +838,7 @@ public final class DefaultGraphOperations implements GraphOperations {
     private static Map<String, String> visibleLocals(CallableDeclaration<?> callable, Node first) {
         Map<String, String> vars = new LinkedHashMap<>();
         for (Parameter p : callable.getParameters()) {
-            vars.put(p.getNameAsString(), p.getType().asString() + (p.isVarArgs() ? "[]" : ""));
+            vars.put(p.getNameAsString(), typeText(p.getType()) + (p.isVarArgs() ? "[]" : ""));
         }
         Position start = first.getBegin().orElseThrow();
         for (VariableDeclarator d : callable.findAll(VariableDeclarator.class)) {
@@ -831,7 +853,7 @@ public final class DefaultGraphOperations implements GraphOperations {
         for (Parameter p : callable.findAll(Parameter.class)) {
             Node owner = p.getParentNode().orElse(null);
             if ((owner instanceof CatchClause || owner instanceof LambdaExpr) && owner.isAncestorOf(first)) {
-                vars.put(p.getNameAsString(), p.getType().asString());
+                vars.put(p.getNameAsString(), typeText(p.getType()));
             }
         }
         return vars;
@@ -848,7 +870,16 @@ public final class DefaultGraphOperations implements GraphOperations {
     }
 
     private static String typeOf(VariableDeclarator d) {
-        return d.getType().asString();
+        return typeText(d.getType());
+    }
+
+    /** Тип как в исходнике ({@code Map<String, Integer>}, а не {@code Map<String,Integer>} из asString). */
+    private static String typeText(Type type) {
+        try {
+            return LexicalPreservingPrinter.print(type).strip();
+        } catch (RuntimeException e) {
+            return type.asString();
+        }
     }
 
     /** Имена, которые метод читает или пишет после фрагмента. */
