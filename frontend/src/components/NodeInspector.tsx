@@ -84,7 +84,7 @@ export function NodeInspector({ selection, graph, onOp }: Props) {
 
   return (
     <div className="inspector">
-      <h3>{many ? `Выделено блоков: ${selection.length}` : 'Узел'}</h3>
+      <h3>{many ? `Выделено блоков: ${selection.length}` : 'Блок'}</h3>
       {many ? (
         <ol className="inspector-list">
           {ordered.map((n) => (

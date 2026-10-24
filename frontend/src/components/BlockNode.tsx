@@ -3,27 +3,27 @@ import type { Finding, GraphNode } from '../api/types';
 import { HANDLE, frameTitle, nodeShape, nodeSize, type Shape, type Size } from '../flow/methodFlow';
 
 /**
- * Цвет вида узла — «карандаш» на чертеже: ветвления охрой, циклы бирюзой, исключения красным, остальное графитом.
- * Вид и так различает форма блока, цвет лишь выделяет управляющие конструкции. Значения — токены styles.css.
+ * Цвет вида узла — CSS-переменные темы (styles.css): ветвления янтарём, циклы бирюзой, исключения красным,
+ * остальное нейтрально. Вид и так различает форма блока, цвет лишь выделяет управляющие конструкции.
  */
-const INK = '#18202b';
-const INK_2 = '#465163';
-const MUTED = '#667085';
-const BRANCH = '#8a5300';
-const LOOP = '#0b6b6b';
-const ERROR = '#b42318';
+const NEUTRAL = 'var(--node-border)';
+const TYPE = 'var(--k-type)';
+const BRANCH = 'var(--k-branch)';
+const LOOP = 'var(--k-loop)';
+const ERROR = 'var(--k-error)';
 
-export const KIND_COLORS: Partial<Record<GraphNode['kind'], string>> = {
-  class: INK_2, interface: INK_2, enum: INK_2, record: INK_2,
-  method: INK, constructor: INK, field: MUTED,
-  start: INK, end: INK, variable: INK_2, operation: INK_2, call: INK_2, return: INK,
-  condition: BRANCH, switch: BRANCH, case: BRANCH,
-  loop: LOOP, break: MUTED, continue: MUTED,
-  try: ERROR, catch: ERROR, finally: ERROR, throw: ERROR,
-  raw: MUTED,
-};
+/** Map, а не объект: у объекта ключ 'constructor' вернул бы Object.prototype.constructor. */
+export const KIND_COLORS = new Map<GraphNode['kind'], string>([
+  ['class', TYPE], ['interface', TYPE], ['enum', TYPE], ['record', TYPE],
+  ['condition', BRANCH], ['switch', BRANCH], ['case', BRANCH],
+  ['loop', LOOP],
+  ['try', ERROR], ['catch', ERROR], ['finally', ERROR], ['throw', ERROR],
+]);
 
-export const kindColor = (kind: GraphNode['kind']) => KIND_COLORS[kind] ?? MUTED;
+/** Цвет рамки и заголовка блока. Нейтральные виды — цвет рамки по умолчанию. */
+export const kindColor = (kind: GraphNode['kind']) => KIND_COLORS.get(kind) ?? NEUTRAL;
+/** Цвет подписи вида: у нейтральных — вторичный текст, у цветных — их цвет. */
+const titleColor = (kind: GraphNode['kind']) => KIND_COLORS.get(kind) ?? 'var(--node-title)';
 
 const SEVERITY_ORDER: Finding['severity'][] = ['high', 'medium', 'low'];
 const SEVERITY_LABEL: Record<Finding['severity'], string> = { high: 'высокая', medium: 'средняя', low: 'низкая' };
@@ -49,7 +49,7 @@ function ShapeOutline({ shape, size, color }: { shape: Shape; size: Size; color:
       : `${h / 2},${s} ${w - h / 2},${s} ${w - s},${h / 2} ${w - h / 2},${h - s} ${h / 2},${h - s} ${s},${h / 2}`;
   return (
     <svg className="block-outline" width={w} height={h} aria-hidden>
-      <polygon points={points} fill="var(--sheet)" stroke={color} strokeWidth={1} />
+      <polygon points={points} style={{ fill: 'var(--node-bg)', stroke: color, strokeWidth: 1 }} />
     </svg>
   );
 }
@@ -81,7 +81,7 @@ export function BlockNode({ data }: NodeProps) {
       {/* У ромба и шестиугольника боковой угол — посередине высоты, у прямоугольников ручки разнесены. */}
       <Handle type="target" id={HANDLE.backIn} position={Position.Right} className="handle-side" style={{ top: outlined ? '50%' : '30%' }} />
       <div className="block-body">
-        <div className="block-title" style={{ color }}>
+        <div className="block-title" style={{ color: titleColor(node.kind) }}>
           {node.label}
           {findings > 0 && (
             <span className={`block-warning sev-${severity}`} title={findingsTitle(list, findings)}>
@@ -105,7 +105,7 @@ export function FrameNode({ data }: NodeProps) {
   const color = kindColor(node.kind);
   return (
     <div className="frame" style={{ borderColor: color, ['--kind' as string]: color }}>
-      <div className="frame-title" style={{ color }}>{frameTitle(node)}</div>
+      <div className="frame-title" style={{ color: titleColor(node.kind) }}>{frameTitle(node)}</div>
     </div>
   );
 }

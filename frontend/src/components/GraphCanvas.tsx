@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Background, BackgroundVariant, Controls, MiniMap, ReactFlow, useEdgesState, useNodesInitialized, useNodesState, useReactFlow, useStore, type Edge, type Node, type NodeChange } from '@xyflow/react';
 import type { Finding, Graph, GraphNode } from '../api/types';
 import { BlockNode, FrameNode, kindColor } from './BlockNode';
-import { layoutGraph } from './layout';
+import { edgePaint, layoutGraph, type Theme } from './layout';
+import type { EdgeTone } from '../flow/methodFlow';
 
 const nodeTypes = { block: BlockNode, frame: FrameNode };
 
@@ -17,6 +18,7 @@ interface Props {
   focus?: { id: string; seq: number } | null;
   /** Находки анализатора, разложенные по блокам текущего графа (sourceMap.findingsByNode). */
   findings?: Map<string, Finding[]>;
+  theme?: Theme;
 }
 
 /** Плавно центрирует холст на узле, сохраняя масштаб. Рендерится внутри ReactFlow ради useReactFlow. */
@@ -79,7 +81,7 @@ const NO_FINDINGS: Finding[] = [];
 
 const nodeOf = (n: Node) => (n.data as { node: GraphNode }).node;
 
-export function GraphCanvas({ graph, selectedIds, onSelect, onOpenMethod, focus, findings }: Props) {
+export function GraphCanvas({ graph, selectedIds, onSelect, onOpenMethod, focus, findings, theme = 'light' }: Props) {
   // Узлы живут в состоянии и принимают изменения от React Flow (размеры, выделение). Если отдавать новые
   // объекты на каждый рендер без onNodesChange, React Flow теряет замеры и на кадр прячет узлы —
   // второй клик двойного клика уходит в пустой холст, и метод не открывается.
@@ -92,7 +94,7 @@ export function GraphCanvas({ graph, selectedIds, onSelect, onOpenMethod, focus,
   useEffect(() => {
     if (!graph) return;
     let cancelled = false;
-    layoutGraph(graph)
+    layoutGraph(graph, theme)
       .then((result) => {
         if (cancelled) return;
         setError(null);
@@ -145,6 +147,16 @@ export function GraphCanvas({ graph, selectedIds, onSelect, onOpenMethod, focus,
     );
   }, [findings, rev, setNodes]);
 
+  // Смена темы: перекрашиваем рёбра (цвет стрелки задаётся строкой), раскладку не трогаем.
+  useEffect(() => {
+    setEdges((es) =>
+      es.map((e) => {
+        const tone = (e.data as { tone?: EdgeTone } | undefined)?.tone;
+        return tone ? { ...e, ...edgePaint(tone, theme, e) } : e;
+      }),
+    );
+  }, [theme, setEdges]);
+
   if (error) return <div className="empty error">{error}</div>;
   if (rev === 0) return <div className="empty">Раскладываем граф…</div>;
 
@@ -167,23 +179,21 @@ export function GraphCanvas({ graph, selectedIds, onSelect, onOpenMethod, focus,
         if (node.kind === 'method' || node.kind === 'constructor') onOpenMethod(node);
       }}
       minZoom={0.1}
-      colorMode="light"
+      colorMode={theme}
       proOptions={{ hideAttribution: false }}
     >
-      {/* Миллиметровка: мелкая клетка 16px и крупная 80px. */}
-      <Background id="minor" variant={BackgroundVariant.Lines} gap={16} color="var(--grid)" lineWidth={1} />
-      <Background id="major" variant={BackgroundVariant.Lines} gap={80} color="var(--grid-major)" lineWidth={1} />
+      <Background variant={BackgroundVariant.Dots} gap={20} size={1.4} color="var(--grid-dot)" />
       <Controls showInteractive={false} />
       <MiniMap
         pannable
         zoomable
-        bgColor="var(--sheet)"
-        maskColor="rgba(245, 246, 248, 0.75)"
+        bgColor="var(--island)"
+        maskColor="color-mix(in srgb, var(--app-bg) 70%, transparent)"
         maskStrokeColor="var(--accent)"
         maskStrokeWidth={1}
         // Рамки групп на мини-карте — только контур, иначе они закрашивают блоки внутри.
         nodeColor={(n) => (n.type === 'frame' ? 'transparent' : kindColor(nodeOf(n).kind))}
-        nodeStrokeColor={(n) => (n.type === 'frame' ? 'var(--rule-strong)' : 'transparent')}
+        nodeStrokeColor={(n) => (n.type === 'frame' ? 'var(--node-border)' : 'transparent')}
         nodeStrokeWidth={2}
         nodeBorderRadius={2}
       />
