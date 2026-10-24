@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { CircleAlert, CircleCheck, Info, TriangleAlert, X } from 'lucide-react';
 import type { Diagnostics, Finding, VerifyReport } from '../api/types';
 
 /** Последнее применённое авто-исправление — показываем дифф и даём проверить или отменить. */
@@ -56,22 +57,25 @@ function FindingCard({ f, onSelect, onFix }: { f: Finding; onSelect: Props['onSe
       onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && onSelect(f)}
     >
       <div className="finding-head">
+        {f.severity === 'high' ? <CircleAlert size={16} /> : f.severity === 'medium' ? <TriangleAlert size={16} /> : <Info size={16} />}
         <strong>{f.title}</strong>
+        <span className="muted">{f.file.split('/').at(-1)}:{f.startLine}</span>
         <span className="badge">{SEVERITY[f.severity]}</span>
-        <span className="muted">{f.file}:{f.startLine}</span>
       </div>
-      <div>{f.explanation}</div>
+      <div className="finding-text">{f.explanation}</div>
       {f.complexity && (
         <div className="complexity">
-          {f.complexity.current}
-          {f.complexity.after && <> → <b>{f.complexity.after}</b></>}
-          {f.expectedEffect && <span className="muted"> · {f.expectedEffect}</span>}
+          <span className="complexity-change">
+            {f.complexity.current}
+            {f.complexity.after && <> → <b>{f.complexity.after}</b></>}
+          </span>
+          {f.expectedEffect && <span className="complexity-effect">{f.expectedEffect}</span>}
         </div>
       )}
       {f.fix && (
         <div className="finding-fix" onClick={(e) => e.stopPropagation()}>
           {f.fix.autoApplicable ? (
-            <button className="primary" disabled={busy} onClick={fix} title={f.fix.description}>
+            <button disabled={busy} onClick={fix} title={f.fix.description}>
               {busy ? 'Исправляем…' : 'Исправить автоматически'}
             </button>
           ) : (
@@ -91,8 +95,8 @@ export function AnalysisPanel({ diagnostics, onSelect, onFix, applied, onVerify,
       {applied && (
         <div className="applied-fix" role="status">
           <div className="applied-head">
-            <strong className="ok">✓ Исправление применено</strong>
-            <button className="link-button" onClick={onDismissApplied} aria-label="Скрыть">✕</button>
+            <strong className="ok"><CircleCheck size={16} />Исправление применено</strong>
+            <button className="link-button" onClick={onDismissApplied} aria-label="Скрыть"><X size={16} /></button>
           </div>
           <div>{applied.title}</div>
           <div className="muted">{applied.description}</div>
@@ -111,22 +115,24 @@ export function AnalysisPanel({ diagnostics, onSelect, onFix, applied, onVerify,
           </div>
         </div>
       )}
-      {!diagnostics && <div className="muted">Нет данных анализа</div>}
-      {diagnostics && (
-        <>
-          <h3>Проблемы ({diagnostics.findings.length})</h3>
-          {diagnostics.findings.map((f) => <FindingCard key={f.id} f={f} onSelect={onSelect} onFix={onFix} />)}
-          <h3>Метрики</h3>
-          <table>
-            <thead><tr><th>Метод</th><th>Строк</th><th>Цикл.</th><th>O()</th></tr></thead>
-            <tbody>
-              {diagnostics.metrics.map((m) => (
-                <tr key={m.methodId}><td>{m.name}</td><td>{m.lines}</td><td>{m.cyclomatic ?? '—'}</td><td>{m.complexity ?? '—'}</td></tr>
-              ))}
-            </tbody>
-          </table>
-        </>
-      )}
+      {!diagnostics && <div className="empty-state">Откройте проект — здесь появятся найденные проблемы</div>}
+      {diagnostics && diagnostics.findings.length === 0 && <div className="empty-state">Проблем не найдено</div>}
+      {diagnostics?.findings.map((f) => <FindingCard key={f.id} f={f} onSelect={onSelect} onFix={onFix} />)}
     </div>
+  );
+}
+
+/** Метрики методов: строки, цикломатическая сложность, Big O — отдельная вкладка правой панели. */
+export function MetricsPanel({ diagnostics }: { diagnostics: Diagnostics | null }) {
+  if (!diagnostics) return <div className="empty-state">Нет данных анализа</div>;
+  return (
+    <table>
+      <thead><tr><th>Метод</th><th>Строк</th><th>Цикл.</th><th>O()</th></tr></thead>
+      <tbody>
+        {diagnostics.metrics.map((m) => (
+          <tr key={m.methodId}><td>{m.name}</td><td>{m.lines}</td><td>{m.cyclomatic ?? '—'}</td><td><code>{m.complexity ?? '—'}</code></td></tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
