@@ -143,8 +143,13 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 **Блокеры:** —
 
 ### 2d — LLM-помощник (опц., первый на урезание по LEAD.md §5)
-- [ ] P2 `llm/`: интерфейс советчика + реализация через HTTP-клиент; ключ только из переменной окружения api, не в git;
-      предложение показывается только после quality gate (D6). Без ключа — модуль молча выключен, тесты без сети
+- [x] P2 `llm/`: советчик за качественным гейтом (PR #35). `OptimizationAdvisor` (`enabled`/`advise`),
+      `AdviceRequest`/`Advice`, `ClaudeAdvisor` (Messages API: ключ только из `ANTHROPIC_API_KEY` — заголовок
+      `x-api-key`, в тело и логи не попадает; модель — `ANTHROPIC_MODEL`, адрес — `BLUEPRINTS_LLM_URL`), транспорт
+      на JDK `HttpClient` за подменяемым `LlmTransport` — тесты без сети. Без ключа выключен и запросов не делает;
+      любая ошибка, не-200 или битый JSON → `Optional.empty()`, диагностика не падает. Совет — только текст:
+      применяется после quality gate (D6). 6 тестов `ClaudeAdvisorTest`. Для UI нужен эндпоинт — запрос роли 4 ниже
+      (P2, опционально). Новая зависимость `analysis` — `jackson-databind` (версия из Spring Boot BOM)
 **Блокеры:** —
 
 ## Роль 3 — фронтенд
@@ -198,6 +203,7 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 | Роль 2 | `POST /api/projects/{id}/fixes/{findingId}`: вызвать `io.blueprints.analysis.FixEngine#apply(files, findingId)`, закоммитить новую версию и вернуть `ChangeResult` (state + diff); `FixNotApplicableException` → 409/422 с текстом причины. Контракт и контроллер — зона роли 4. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
 | Роль 4 | В `GET /diagnostics` у `collection-lookup-in-loop` стоит `fix.autoApplicable=true`, но `FixEngine.apply` отказывает (коллекция меняется в цикле — `00-hello`, `OrdersMonolith`). Кнопка «Применить» в UI обещает то, чего нет: выставлять `autoApplicable` по тем же проверкам, что и `apply`. | Роль 2 | Сделано — PR #29: `autoApplicable` = `Fixers.supports(model, finding)` (те же проверки, что и `apply`), текст отказа у 422 совпадает |
 | Роль 2 | `POST /api/projects/{id}/decompose`: `new Decomposer().propose(session.model())` → `DecomposeResult.proposal` (apply=false, v1); при apply=true пока 501 `not_implemented`. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
+| Роль 2 | (опц., P2) `POST /api/projects/{id}/advice` с `{findingId}`: `ClaudeAdvisor.fromEnvironment().advise(...)` по коду метода/фрагмента находки; без `ANTHROPIC_API_KEY` — `enabled=false` → 204; применение совета — только через quality gate (как `/fixes`). Заодно `ANTHROPIC_API_KEY=` в `.env.example` (опц.). Контракт — зона роли 4. | Роль 4 | Открыт (P2) |
 
 ## Журнал интеграций
 | Когда | Результат | Что сломалось |
