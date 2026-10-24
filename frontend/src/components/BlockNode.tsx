@@ -2,16 +2,30 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import type { Finding, GraphNode } from '../api/types';
 import { HANDLE, frameTitle, nodeShape, nodeSize, type Shape, type Size } from '../flow/methodFlow';
 
-export const KIND_COLORS: Partial<Record<GraphNode['kind'], string>> = {
-  class: '#64748b', interface: '#64748b', enum: '#64748b', record: '#64748b',
-  method: '#8b5cf6', constructor: '#8b5cf6', field: '#0ea5e9',
-  start: '#8b5cf6', end: '#8b5cf6', variable: '#3b82f6', condition: '#f59e0b', loop: '#a855f7',
-  call: '#06b6d4', operation: '#3b82f6', return: '#22c55e', throw: '#ef4444',
-  try: '#ec4899', catch: '#ec4899', finally: '#ec4899', switch: '#f59e0b', case: '#f59e0b',
-  break: '#94a3b8', continue: '#94a3b8', raw: '#6b7280',
-};
+/**
+ * Цвет вида узла — CSS-переменные темы (styles.css): ветвления янтарём, циклы бирюзой, исключения красным,
+ * остальное нейтрально. Вид и так различает форма блока, цвет лишь выделяет управляющие конструкции.
+ */
+const NEUTRAL = 'var(--node-border)';
+const TYPE = 'var(--k-type)';
+const BRANCH = 'var(--k-branch)';
+const LOOP = 'var(--k-loop)';
+const ERROR = 'var(--k-error)';
 
-export const kindColor = (kind: GraphNode['kind']) => KIND_COLORS[kind] ?? '#6b7280';
+const TYPE_KINDS = new Set<GraphNode['kind']>(['class', 'interface', 'enum', 'record']);
+
+/** Map, а не объект: у объекта ключ 'constructor' вернул бы Object.prototype.constructor. */
+export const KIND_COLORS = new Map<GraphNode['kind'], string>([
+  ['class', TYPE], ['interface', TYPE], ['enum', TYPE], ['record', TYPE],
+  ['condition', BRANCH], ['switch', BRANCH], ['case', BRANCH],
+  ['loop', LOOP],
+  ['try', ERROR], ['catch', ERROR], ['finally', ERROR], ['throw', ERROR],
+]);
+
+/** Цвет рамки и заголовка блока. Нейтральные виды — цвет рамки по умолчанию. */
+export const kindColor = (kind: GraphNode['kind']) => KIND_COLORS.get(kind) ?? NEUTRAL;
+/** Цвет подписи вида: у нейтральных — вторичный текст, у цветных — их цвет. */
+const titleColor = (kind: GraphNode['kind']) => KIND_COLORS.get(kind) ?? 'var(--node-title)';
 
 const SEVERITY_ORDER: Finding['severity'][] = ['high', 'medium', 'low'];
 const SEVERITY_LABEL: Record<Finding['severity'], string> = { high: 'высокая', medium: 'средняя', low: 'низкая' };
@@ -30,14 +44,14 @@ function findingsTitle(list: Finding[], count: number): string {
 /** Контур для фигур, которые не рисуются CSS-рамкой: ромб (условие) и шестиугольник (цикл). */
 function ShapeOutline({ shape, size, color }: { shape: Shape; size: Size; color: string }) {
   const { width: w, height: h } = size;
-  const s = 1.5; // отступ под толщину линии
+  const s = 1; // отступ под толщину линии
   const points =
     shape === 'decision'
       ? `${w / 2},${s} ${w - s},${h / 2} ${w / 2},${h - s} ${s},${h / 2}`
       : `${h / 2},${s} ${w - h / 2},${s} ${w - s},${h / 2} ${w - h / 2},${h - s} ${h / 2},${h - s} ${s},${h / 2}`;
   return (
     <svg className="block-outline" width={w} height={h} aria-hidden>
-      <polygon points={points} fill="var(--panel)" stroke={color} strokeWidth={1.5} />
+      <polygon points={points} style={{ fill: 'var(--node-bg)', stroke: color, strokeWidth: 1 }} />
     </svg>
   );
 }
@@ -61,7 +75,8 @@ export function BlockNode({ data }: NodeProps) {
   return (
     <div
       className={`block shape-${shape} ${selected ? 'selected' : ''} ${findings ? 'has-findings' : ''}`}
-      style={{ width: size.width, height: size.height, borderColor: color, ['--kind' as string]: color }}
+      // Рамку красят только управляющие конструкции; у типов и операторов — нейтральная рамка темы.
+      style={{ width: size.width, height: size.height, borderColor: KIND_COLORS.has(node.kind) && !TYPE_KINDS.has(node.kind) ? color : undefined, ['--kind' as string]: color }}
       title={node.code ?? node.label}
     >
       {outlined && <ShapeOutline shape={shape} size={size} color={color} />}
@@ -69,7 +84,7 @@ export function BlockNode({ data }: NodeProps) {
       {/* У ромба и шестиугольника боковой угол — посередине высоты, у прямоугольников ручки разнесены. */}
       <Handle type="target" id={HANDLE.backIn} position={Position.Right} className="handle-side" style={{ top: outlined ? '50%' : '30%' }} />
       <div className="block-body">
-        <div className="block-title" style={{ color }}>
+        <div className="block-title" style={{ color: titleColor(node.kind) }}>
           {node.label}
           {findings > 0 && (
             <span className={`block-warning sev-${severity}`} title={findingsTitle(list, findings)}>
@@ -92,8 +107,8 @@ export function FrameNode({ data }: NodeProps) {
   const node = (data as { node: GraphNode }).node;
   const color = kindColor(node.kind);
   return (
-    <div className="frame" style={{ borderColor: color, ['--kind' as string]: color }}>
-      <div className="frame-title" style={{ color }}>{frameTitle(node)}</div>
+    <div className={`frame ${TYPE_KINDS.has(node.kind) ? 'frame-type' : ''}`} style={{ ['--kind' as string]: color }}>
+      <div className="frame-title" style={{ color: titleColor(node.kind) }}>{frameTitle(node)}</div>
     </div>
   );
 }
