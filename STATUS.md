@@ -97,17 +97,31 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 - [x] `POST /fixes/{id}` (с quality gate) и `POST /decompose` (предложение) подключены в api ролью 4 (PR #21, #23)
 
 ### 2a — правила, метрики, общие файлы модуля
-- [ ] **P0, разблокер — первым, отдельным PR.** Чисто механический рефакторинг без изменения поведения (все 53 теста
-      зелёные без правок ассертов, публичный API модуля прежний):
+- [x] **P0, разблокер — первым, отдельным PR (PR #29).** Чисто механический рефакторинг без изменения поведения
+      (все 53 старых теста зелёные без правок ассертов, публичный API модуля прежний):
       `rules/Rules.java` — реестр правил, `Analyzer.defaultRules()` делегирует ему;
-      `fixes/Fixer` (интерфейс: `kind()`, `supports(Finding)`, `apply(...)`) + `fixes/Fixers.java` — реестр,
-      4 ветки `switch` из `FixEngine` разнесены по классам `fixes/*Fix.java`, `FixEngine` остаётся фасадом;
-      `Analyzer` выставляет `Fix.autoApplicable` по `Fixers.supports(finding)`, а не по правилу;
-      пакет `decompose/` для внутренностей `Decomposer` (сам `Decomposer` — фасад).
-      Это единственная задача, которой разрешено трогать файлы 2b и 2c. До её слияния 2b/2c только добавляют новые файлы.
+      `fixes/Fixer` (интерфейс: `kind()`, `refusalReason(model, finding)`, `apply(...)`, `supports(...)` по умолчанию)
+      + `fixes/Fixers.java` — реестр, 4 ветки `switch` из `FixEngine` разнесены по классам `fixes/*Fix.java`;
+      `FixEngine` — фасад, диспетчеризует по `Fix.kind`, а не по `finding.rule()`;
+      `Analyzer` выставляет `Fix.autoApplicable` по `Fixers.supports(model, finding)` — тем же проверкам, что и
+      `apply` (закрыт запрос роли 4), а не по правилу;
+      пакет `decompose/` для внутренностей `Decomposer` (сам `Decomposer` — фасад, record'ы и `propose(model)` прежние).
+      **Сделано:** 2b/2c разблокированы — своё исправление = `Fixer` + строка в `fixes/Fixers`, стратегия — файл
+      в `decompose/`, без правки общих файлов. Инвариант «флаг = реальное применение» закреплён
+      `AnalyzerFixApplicabilityTest`. Пересечение: PR #27 (`feat/analysis-fix-safety`, та же задача через правила +
+      `FixSafety`) — предложено слить #29 первым и ребейзнуть #27; `FixSafety` заменён реестром, полезные
+      не-пересекающиеся части (словарь декомпозиции, тесты) — отдельным PR после ребейза.
 - [ ] P1 Big O на фрагмент (выделение блоков в блок-схеме), не только на метод — `PLAN.md` §4
-- [ ] P1 стоимость Stream API и лямбд в `CostModel` (бонус scope): `stream()…collect` / `sorted()` / `anyMatch` в цикле
+- [x] P1 стоимость Stream API и лямбд в `CostModel` (бонус scope; PR #34): терминальные операции
+      (`collect`/`toList`/`count`/`sum`/`forEach`/`anyMatch`/`findFirst`/…) — один проход O(n); `sorted` — O(n log n);
+      лямбда в `filter/map/anyMatch/forEach/collect` и коллекторных фабриках выполняется на каждом элементе,
+      поэтому `list.contains` в лямбде потока — O(n²), поток с такой лямбдой в цикле — O(n³). Не раздуваем оценку
+      там, где лямбда вызывается 0–1 раз (`Optional.map/filter`) или это `Math.min/max`. +6 тестов в `MetricsTest`
 - [ ] P1 прогон по монолитам организаторов, как только они появятся в `corpus/` (G8): нет падений и явных ложных находок
+      **Предпроверка (24.10, ветка `feat/corpus-monoliths`, PR #28):** 6 монолитов ~200–800 строк — разбор без ошибок,
+      метрики по всем методам, 7–20 находок на монолит, все `Finding.nodeIds` привязаны к узлам. Шум: диапазоны
+      `magic-number` в цепочках `else-if` перекрывались (исправлено в PR #32 — находка указывает на условие).
+      Осталось: прогон на монолитах организаторов, когда лид их получит.
 - [ ] P2 новые правила: `Pattern.compile` / `String.format` в цикле; рекурсия без мемоизации (экспоненциальная оценка)
 **Блокеры:** —
 
@@ -190,11 +204,11 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 | Кто просит | Что | Кому | Статус |
 |---|---|---|---|
 | Роль 2 | `POST /api/projects/{id}/fixes/{findingId}`: вызвать `io.blueprints.analysis.FixEngine#apply(files, findingId)`, закоммитить новую версию и вернуть `ChangeResult` (state + diff); `FixNotApplicableException` → 409/422 с текстом причины. Контракт и контроллер — зона роли 4. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
-| Роль 4 | В `GET /diagnostics` у `collection-lookup-in-loop` стоит `fix.autoApplicable=true`, но `FixEngine.apply` отказывает (коллекция меняется в цикле — `00-hello`, `OrdersMonolith`). Кнопка «Применить» в UI обещает то, чего нет: выставлять `autoApplicable` по тем же проверкам, что и `apply`. | Роль 2 | Открыт |
+| Роль 4 | В `GET /diagnostics` у `collection-lookup-in-loop` стоит `fix.autoApplicable=true`, но `FixEngine.apply` отказывает (коллекция меняется в цикле — `00-hello`, `OrdersMonolith`). Кнопка «Применить» в UI обещает то, чего нет: выставлять `autoApplicable` по тем же проверкам, что и `apply`. | Роль 2 | Сделано — PR #29: `autoApplicable` = `Fixers.supports(model, finding)` (те же проверки, что и `apply`), текст отказа у 422 совпадает |
 | Роль 2 | `POST /api/projects/{id}/decompose`: `new Decomposer().propose(session.model())` → `DecomposeResult.proposal` (apply=false, v1); при apply=true пока 501 `not_implemented`. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
-| Роль 4 | В `GET /diagnostics` у `collection-lookup-in-loop` стоит `fix.autoApplicable=true`, но `FixEngine.apply` отказывает (коллекция меняется в цикле — `00-hello`, `OrdersMonolith`). Кнопка «Применить» в UI обещает то, чего нет: выставлять `autoApplicable` по тем же проверкам, что и `apply`. | Роль 2 | Открыт |
 
 ## Журнал интеграций
 | Когда | Результат | Что сломалось |
 |---|---|---|
 | 24.10 ~09:45 (роль 1, локально: runner + api + фронт `feat/frontend-line-node`) | ✅ загрузка `ScopeSample.java` → overview (26 contains + 16 call) → блок-схемы всех 19 методов → диагностика (5 находок, все привязаны к узлам) → запуск в runner → 9 операций графа подряд (insertAfter, extractMethod, wrapIf, wrapLoop, editNode ×3, move) → повторный запуск: **вывод совпал**. Фронт рисует overview и блок-схемы на реальных данных без ошибок в консоли | 🔴 `POST /verify` — 501 (роль 4): шаг «сравнение» есть только вручную. 🟡 `wrapIf/wrapLoop` вокруг объявления, нужного дальше, ломали компиляцию; тип в `extractMethod` печатался без пробелов — исправлено (роль 1). 🟡 Фронт: overview на 36 узлов — мелкая плоская лента, рёбра call накладываются; в `client.ts` нет `graph/ops` — правка на графе из UI пока недоступна (роль 3). 🟡 Вывод javac/java в runner может начинаться со строки `Picked up JAVA_TOOL_OPTIONS`, если переменная задана в окружении — нормализация verify должна её отбрасывать (роль 4) |
+| 24.10 ~12:30 (роль 1, локально: runner + api из main) | ✅ **полный путь через api**: `ScopeSample.java` → `/verify` v1↔v1 8/8 → 4 операции графа (extractMethod, wrapIf, move, insertAfter) → `/verify` 8/8 «поведение совпадает» → editNode с изменением поведения → `/verify` 0/8 с точной строкой расхождения («строка 4: ожидалось «3workday3», получено «3always3»») → `/fixes` (magic-number) применился. Масштаб: синтетический монолит 1300 строк — граф 0,16 с, диагностика 0,22 с, операция 1,2 с, `/verify` 8 с на 6 входах | 🟡 Фронт: в `client.ts` всё ещё нет `graph/ops` — правка на графе только через api (роль 3). 🟡 `/verify` fuzz=true пока гоняет только граничные stdin-входы — `FuzzHarness` (PR #20) не подключён (роль 4, запрос в Notion). 🟡 В `corpus/` только `00-hello` (25 строк) — нужны монолиты ~1000 строк (роль 4 / G8) |

@@ -1,16 +1,8 @@
 package io.blueprints.analysis;
 
 import com.github.javaparser.ast.body.MethodDeclaration;
-import io.blueprints.analysis.rules.CollectionLookupInLoopRule;
-import io.blueprints.analysis.rules.DeepNestingRule;
-import io.blueprints.analysis.rules.DuplicateCodeRule;
-import io.blueprints.analysis.rules.EmptyCatchRule;
-import io.blueprints.analysis.rules.GodClassRule;
-import io.blueprints.analysis.rules.LinkedListGetInLoopRule;
-import io.blueprints.analysis.rules.LongMethodRule;
-import io.blueprints.analysis.rules.MagicNumberRule;
-import io.blueprints.analysis.rules.NestedLoopSameCollectionRule;
-import io.blueprints.analysis.rules.StringConcatInLoopRule;
+import io.blueprints.analysis.fixes.Fixers;
+import io.blueprints.analysis.rules.Rules;
 import io.blueprints.core.model.ProjectModel;
 
 import java.util.ArrayList;
@@ -21,7 +13,7 @@ import java.util.List;
  * Анализатор: чистый набор правил + метрики. Без HTTP, без состояния — вызывается из {@code api}
  * как библиотека ({@code Analyzer.withDefaultRules()}).
  *
- * <p>Новое правило = класс, реализующий {@link Rule}, строка в {@link #defaultRules()} и тест
+ * <p>Новое правило = класс, реализующий {@link Rule}, строка в {@link Rules#defaultRules()} и тест
  * (правило из CLAUDE.md).
  */
 public final class Analyzer {
@@ -37,19 +29,9 @@ public final class Analyzer {
         return new Analyzer(defaultRules());
     }
 
-    /** Правила из PLAN.md §4 в порядке показа: сначала дефекты сложности, потом структура. */
+    /** Реестр правил по умолчанию живёт в {@code rules/Rules.java}. */
     public static List<Rule> defaultRules() {
-        return List.of(
-                new NestedLoopSameCollectionRule(),
-                new CollectionLookupInLoopRule(),
-                new StringConcatInLoopRule(),
-                new LinkedListGetInLoopRule(),
-                new DeepNestingRule(4, 15),
-                new LongMethodRule(40),
-                new DuplicateCodeRule(5),
-                new EmptyCatchRule(),
-                new MagicNumberRule(),
-                new GodClassRule(20, 15, 400));
+        return Rules.defaultRules();
     }
 
     public List<Rule> rules() {
@@ -71,9 +53,37 @@ public final class Analyzer {
                 // Правило не справилось с конструкцией — теряем только его находки.
             }
         }
+        findings.replaceAll(finding -> withApplicability(model, finding));
         // Панель «Проблемы» показывает сначала критичное и сверху вниз по коду.
         findings.sort(Comparator.comparing(Finding::severity).thenComparingInt(Finding::startLine));
         return new AnalysisReport(findings, metrics(model));
+    }
+
+    /**
+     * Авто-применимость решает реестр исправлений ({@link Fixers}), а не правило: если
+     * {@code FixEngine} на этой версии кода отказал бы (коллекция меняется в цикле, строку читают
+     * внутри цикла, …), в диагностике стоит {@code autoApplicable=false}. Иначе кнопка «Применить»
+     * обещает то, чего движок не сделает (запрос роли 4).
+     */
+    private static Finding withApplicability(ProjectModel model, Finding finding) {
+        Fix fix = finding.fix();
+        if (fix == null) {
+            return finding;
+        }
+        boolean applicable = Fixers.supports(model, finding);
+        return new Finding(
+                finding.id(),
+                finding.rule(),
+                finding.severity(),
+                finding.title(),
+                finding.explanation(),
+                finding.file(),
+                finding.startLine(),
+                finding.endLine(),
+                finding.nodeIds(),
+                finding.complexity(),
+                new Fix(fix.kind(), fix.description(), fix.preview(), applicable),
+                finding.expectedEffect());
     }
 
     /** Метрики по каждому методу: строки, цикломатика, вложенность, Big O. */
