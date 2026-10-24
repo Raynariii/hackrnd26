@@ -39,7 +39,9 @@ class VerifyServiceTest {
     /** Песочница: по содержимому файла выбирает «программу». */
     private BatchRunner fake(Function<String, RunResult> v1, Function<String, RunResult> v2, List<Integer> calls) {
         return (files, inputs, timeoutMs) -> {
-            calls.add(inputs.size());
+            synchronized (calls) { // эталон и текущая версия запускаются параллельно
+                calls.add(inputs.size());
+            }
             if (files.get(0).content().contains("broken")) {
                 return new RunBatchResult(new CompileInfo(false,
                         List.of(new ParseProblem("Main.java", 3, null, "';' expected")), "ошибка"), List.of());
