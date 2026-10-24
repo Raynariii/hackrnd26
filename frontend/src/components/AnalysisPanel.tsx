@@ -39,7 +39,7 @@ function DiffView({ diff }: { diff: string }) {
   );
 }
 
-function FindingCard({ f, onSelect, onFix }: { f: Finding; onSelect: Props['onSelect']; onFix: Props['onFix'] }) {
+function FindingCard({ f, onSelect, onFix, open, onToggle }: { f: Finding; onSelect: Props['onSelect']; onFix: Props['onFix']; open: boolean; onToggle: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fix = async () => {
@@ -50,17 +50,20 @@ function FindingCard({ f, onSelect, onFix }: { f: Finding; onSelect: Props['onSe
   };
   return (
     <div
-      className={`finding sev-${f.severity}`}
+      className={`finding sev-${f.severity} ${open ? 'open' : ''}`}
       role="button"
       tabIndex={0}
-      onClick={() => onSelect(f)}
-      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget && onSelect(f)}
+      aria-expanded={open}
+      onClick={() => { onSelect(f); onToggle(); }}
+      onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { onSelect(f); onToggle(); } }}
     >
       <div className="finding-head">
         {f.severity === 'high' ? <CircleAlert size={16} /> : f.severity === 'medium' ? <TriangleAlert size={16} /> : <Info size={16} />}
         <strong>{f.title}</strong>
-        <span className="muted">{f.file.split('/').at(-1)}:{f.startLine}</span>
-        <span className="badge">{SEVERITY[f.severity]}</span>
+        <span className="finding-meta">
+          <span className="badge">{SEVERITY[f.severity]}</span>
+          <span className="muted">{f.file.split('/').at(-1)}:{f.startLine}</span>
+        </span>
       </div>
       <div className="finding-text">{f.explanation}</div>
       {f.complexity && (
@@ -69,7 +72,7 @@ function FindingCard({ f, onSelect, onFix }: { f: Finding; onSelect: Props['onSe
             {f.complexity.current}
             {f.complexity.after && <> → <b>{f.complexity.after}</b></>}
           </span>
-          {f.expectedEffect && <span className="complexity-effect">{f.expectedEffect}</span>}
+          {open && f.expectedEffect && <span className="complexity-effect">{f.expectedEffect}</span>}
         </div>
       )}
       {f.fix && (
@@ -81,7 +84,7 @@ function FindingCard({ f, onSelect, onFix }: { f: Finding; onSelect: Props['onSe
           ) : (
             <span className="muted">Нужна ручная правка</span>
           )}
-          {f.fix.description && <span className="muted finding-fix-desc">{f.fix.description}</span>}
+          {open && f.fix.description && <span className="muted finding-fix-desc">{f.fix.description}</span>}
         </div>
       )}
       {error && <div className="error finding-error" onClick={(e) => e.stopPropagation()}>{error}</div>}
@@ -90,6 +93,8 @@ function FindingCard({ f, onSelect, onFix }: { f: Finding; onSelect: Props['onSe
 }
 
 export function AnalysisPanel({ diagnostics, onSelect, onFix, applied, onVerify, onUndo, onDismissApplied, verifying }: Props) {
+  /** Раскрытая карточка: свернутые показывают суть, подробности — по клику (клик же ведёт к коду и блоку). */
+  const [openId, setOpenId] = useState<string | null>(null);
   return (
     <div className="analysis">
       {applied && (
@@ -117,7 +122,10 @@ export function AnalysisPanel({ diagnostics, onSelect, onFix, applied, onVerify,
       )}
       {!diagnostics && <div className="empty-state">Откройте проект — здесь появятся найденные проблемы</div>}
       {diagnostics && diagnostics.findings.length === 0 && <div className="empty-state">Проблем не найдено</div>}
-      {diagnostics?.findings.map((f) => <FindingCard key={f.id} f={f} onSelect={onSelect} onFix={onFix} />)}
+      {diagnostics?.findings.map((f) => (
+        <FindingCard key={f.id} f={f} onSelect={onSelect} onFix={onFix} open={openId === f.id}
+          onToggle={() => setOpenId((id) => (id === f.id ? null : f.id))} />
+      ))}
     </div>
   );
 }

@@ -12,7 +12,7 @@ const elk = new ELK();
 export type Theme = 'light' | 'dark';
 export const EDGE_COLORS: Record<Theme, Record<EdgeTone, string>> = {
   light: { yes: '#7d838e', no: '#9e5c00', back: '#00627a', exception: '#c7222d', call: '#8b919c', contains: '#c9ced6', default: '#7d838e' },
-  dark: { yes: '#7b7f87', no: '#e0a458', back: '#4fb3c7', exception: '#f06e78', call: '#7b7f87', contains: '#45484e', default: '#7b7f87' },
+  dark: { yes: '#6b7078', no: '#d39a52', back: '#4fa9bb', exception: '#e0717a', call: '#6b7078', contains: '#3a3d42', default: '#6b7078' },
 };
 
 /** Стиль ребра по тону и теме: общий для раскладки и для перекраски при смене темы. */
