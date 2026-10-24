@@ -1,15 +1,5 @@
-/**
- * Разбор SSE-консоли (POST /run/stream) и тип ещё не слитого эндпоинта POST /complexity (PR роли 4 #42).
- * ComplexityResult лежит здесь, чтобы не конфликтовать с #42 в types.ts; после слияния переедет туда.
- * Фронт работает и без эндпоинта: недоступный /complexity просто скрывает Big O выделения.
- */
+/** Разбор SSE-консоли POST /run/stream: события `event:` / `data:` (contracts/openapi.yaml). */
 import type { RunStreamEvent } from './types';
-
-/** POST /projects/{id}/complexity → ComplexityResult */
-export interface ComplexityResult {
-  version: number;
-  current: string;
-}
 
 const KNOWN = new Set(['compile', 'stdout', 'stderr', 'exit', 'error']);
 

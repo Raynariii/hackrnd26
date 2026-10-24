@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSse } from './pending.ts';
+import { parseSse } from './sse.ts';
 
 test('parseSse: события по порядку, хвост без пустой строки остаётся', () => {
   const { events, rest } = parseSse(

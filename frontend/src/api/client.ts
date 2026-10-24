@@ -1,7 +1,7 @@
-import type { Advice, ApiError, ChangeResult, DecomposeResult, Diagnostics, Graph, GraphOpRequest, ProjectState, RunResult, RunStreamEvent, SourceFile, VerifyReport, VerifyRequest } from './types';
+import type { Advice, ApiError, ChangeResult, ComplexityResult, DecomposeResult, Diagnostics, Graph, GraphOpRequest, ProjectState, RunResult, RunStreamEvent, SourceFile, VerifyReport, VerifyRequest } from './types';
 import { ApiRequestError, isUnsupported } from './errors';
 import { readExportHeaders, type ExportFile } from './download';
-import { parseSse, type ComplexityResult } from './pending';
+import { parseSse } from './sse';
 
 export { ApiRequestError, isUnsupported };
 
