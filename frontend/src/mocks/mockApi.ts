@@ -1,7 +1,8 @@
-import type { ChangeResult, Diagnostics, Graph, GraphOpRequest, ProjectState, RunResult, SourceFile, VerifyReport, VerifyRequest } from '../api/types';
+import type { ChangeResult, DecomposeResult, Diagnostics, Graph, GraphOpRequest, ProjectState, RunResult, SourceFile, VerifyReport, VerifyRequest } from '../api/types';
 import { mockDiagnostics, mockMethodFlow, mockOverview, mockProject, mockRun, mockVerify, mockVerifyFail, mockVerifyNoCompile } from './fixtures';
 import { MAIN_FIX_REJECTION, opsDemo, ordersFixesDemo, realDemos, type RealDemo, type Snapshot } from './realDemos';
 import { ApiRequestError } from '../api/errors';
+import decomposeDemo from './real/Decompose.json';
 
 /** ?demo=flow | ?demo=orders — настоящие графы ядра вместо ручного мока (см. realDemos.ts). */
 const params = new URLSearchParams(globalThis.location?.search ?? '');
@@ -95,5 +96,12 @@ export const mockApi = {
     const report = mode === 'fail' ? mockVerifyFail : mode === 'nocompile' ? mockVerifyNoCompile : mockVerify;
     const withVersion = { ...report, currentVersion: project.version };
     return delay(body.benchmark ? withVersion : { ...withVersion, benchmark: undefined });
+  },
+  /** Настоящий вывод Decomposer (main) по файлу демо; для правленого кода записи нет. */
+  decompose: (_id: string, version: number): Promise<DecomposeResult> => {
+    if (version !== project.version) return Promise.reject(new ApiRequestError(409, { error: 'version_conflict', message: 'Проект изменился' }));
+    const file = demo?.file ?? (opsMode ? opsDemo.file : '');
+    const rec = demo === demoOriginal ? (decomposeDemo as Record<string, DecomposeResult>)[file] : undefined;
+    return delay(rec ?? { proposal: [], notes: ['В демо разбиение записано только для исходного кода ?demo=orders и ?demo=scope'] });
   },
 };

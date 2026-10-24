@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiRequestError } from './api/client';
-import type { Diagnostics, Finding, Graph, GraphNode, GraphOpRequest, ProjectState, RunResult, SourceFile, SourceRange, VerifyReport } from './api/types';
+import type { DecomposeResult, Diagnostics, Finding, Graph, GraphNode, GraphOpRequest, ProjectState, RunResult, SourceFile, SourceRange, VerifyReport } from './api/types';
 import { AnalysisPanel, type AppliedFix } from './components/AnalysisPanel';
+import { DecomposePanel } from './components/DecomposePanel';
 import { BottomPanel } from './components/BottomPanel';
 import { CodeEditor } from './components/CodeEditor';
 import { GraphCanvas } from './components/GraphCanvas';
@@ -28,6 +29,9 @@ export function App() {
   const [graph, setGraph] = useState<Graph | null>(null);
   /** Последний обзорный граф: по нему после правки находим открытый метод заново (id пересчитываются). */
   const [overview, setOverview] = useState<Graph | null>(null);
+  const [decomp, setDecomp] = useState<{ version: number; result: DecomposeResult } | null>(null);
+  const [decomposing, setDecomposing] = useState(false);
+  const [activeClass, setActiveClass] = useState<string | null>(null);
   const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
   /** Выделенные блоки; последний — основной (его показывает инспектор и подсвечивает код). */
   const [selection, setSelection] = useState<GraphNode[]>([]);
@@ -206,6 +210,36 @@ export function App() {
       setBeforeFix(null);
     });
 
+  const proposeDecomposition = () =>
+    guard(async () => {
+      if (!project) return;
+      setDecomposing(true);
+      try {
+        setDecomp({ version: project.version, result: await api.decompose(project.id, project.version) });
+        setActiveClass(null);
+      } finally {
+        setDecomposing(false);
+      }
+    });
+
+  /** Класс из предложения → его члены выделены на обзоре (открываем обзор, если сейчас блок-схема метода). */
+  const showProposedClass = (className: string, nodes: GraphNode[]) => {
+    if (!overview || nodes.length === 0) return;
+    if (graph !== overview) showGraph(overview);
+    setSelection(nodes);
+    setActiveClass(className);
+    setHighlight(nodes[0].range ?? null);
+    focusNode(nodes[0]);
+  };
+
+  const showMember = (node: GraphNode) => {
+    if (!overview) return;
+    if (graph !== overview) showGraph(overview);
+    setSelected(node);
+    setHighlight(node.range ?? null);
+    focusNode(node);
+  };
+
   /** Клик по блоку; с Shift/Ctrl/Cmd — добавить в выделение или убрать из него (для операций над несколькими). */
   const selectNode = (node: GraphNode, additive = false) => {
     if (additive && selection.length > 0) {
@@ -305,6 +339,18 @@ export function App() {
           onDismissApplied={() => setApplied(null)}
           verifying={verifying}
         />
+        {project && (
+          <DecomposePanel
+            result={decomp?.result ?? null}
+            stale={!!decomp && decomp.version !== project.version}
+            busy={decomposing}
+            overview={overview}
+            activeClass={activeClass}
+            onPropose={proposeDecomposition}
+            onShowClass={(cls, nodes) => showProposedClass(cls.className, nodes)}
+            onShowMember={showMember}
+          />
+        )}
       </aside>
 
       <section className="code">

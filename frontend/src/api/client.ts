@@ -1,4 +1,4 @@
-import type { ApiError, ChangeResult, Diagnostics, Graph, GraphOpRequest, ProjectState, RunResult, SourceFile, VerifyReport, VerifyRequest } from './types';
+import type { ApiError, ChangeResult, DecomposeResult, Diagnostics, Graph, GraphOpRequest, ProjectState, RunResult, SourceFile, VerifyReport, VerifyRequest } from './types';
 import { ApiRequestError } from './errors';
 
 export { ApiRequestError };
@@ -32,6 +32,9 @@ const realApi = {
   getDiagnostics: (id: string) => request<Diagnostics>('GET', `/projects/${id}/diagnostics`),
   run: (id: string, stdin = '') => request<RunResult>('POST', `/projects/${id}/run`, { stdin }),
   verify: (id: string, body: VerifyRequest = {}) => request<VerifyReport>('POST', `/projects/${id}/verify`, body),
+  /** Предложение разбиения монолита на классы (Decomposer роли 2). apply=true на сервере пока 501 — не шлём. */
+  decompose: (id: string, version: number) =>
+    request<DecomposeResult>('POST', `/projects/${id}/decompose`, { version, apply: false }),
 };
 
 export type Api = typeof realApi;
