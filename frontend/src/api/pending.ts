@@ -1,31 +1,15 @@
 /**
- * Типы эндпоинтов из ещё не слитых PR роли 4 (contracts/openapi.yaml в ветках):
- * POST /advice (#40), POST /complexity (#42), POST /run/stream (#56).
- * Лежат отдельно от types.ts, чтобы не конфликтовать с этими PR; после их слияния импорты переедут в types.ts,
- * а файл удалится. Фронт работает и без этих эндпоинтов: недоступный эндпоинт просто скрывает функцию.
+ * Разбор SSE-консоли (POST /run/stream) и тип ещё не слитого эндпоинта POST /complexity (PR роли 4 #42).
+ * ComplexityResult лежит здесь, чтобы не конфликтовать с #42 в types.ts; после слияния переедет туда.
+ * Фронт работает и без эндпоинта: недоступный /complexity просто скрывает Big O выделения.
  */
-import type { Problem } from './types';
-
-/** POST /projects/{id}/advice → Advice (204 — советчик выключен, ключа нет) */
-export interface Advice {
-  findingId: string;
-  /** Объяснение и исправленный фрагмент (markdown) */
-  suggestion: string;
-  model?: string | null;
-}
+import type { RunStreamEvent } from './types';
 
 /** POST /projects/{id}/complexity → ComplexityResult */
 export interface ComplexityResult {
   version: number;
   current: string;
 }
-
-/** POST /projects/{id}/run/stream — события text/event-stream (поле data — JSON) */
-export type RunStreamEvent =
-  | { event: 'compile'; data: { ok: boolean; problems?: Problem[]; output?: string } }
-  | { event: 'stdout' | 'stderr'; data: { text: string } }
-  | { event: 'exit'; data: { exitCode: number | null; timeMs: number; timedOut: boolean } }
-  | { event: 'error'; data: { message: string } };
 
 const KNOWN = new Set(['compile', 'stdout', 'stderr', 'exit', 'error']);
 

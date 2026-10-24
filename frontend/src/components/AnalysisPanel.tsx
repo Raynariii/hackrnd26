@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CircleAlert, CircleCheck, Info, Sparkles, TriangleAlert, Wand2, X } from 'lucide-react';
 import type { Diagnostics, Finding, VerifyReport } from '../api/types';
+import { diffLines } from '../flow/diff';
 
 /** Последнее применённое авто-исправление — показываем дифф и даём проверить или отменить. */
 export interface AppliedFix {
@@ -38,14 +39,11 @@ const SEVERITY: Record<Finding['severity'], { label: string; hint: string }> = {
 };
 
 function DiffView({ diff }: { diff: string }) {
-  const lines = diff.split('\n').filter((l) => !l.startsWith('---') && !l.startsWith('+++'));
   return (
     <pre className="diff">
-      {lines.map((l, i) => (
-        <span key={i} className={l.startsWith('+') ? 'diff-add' : l.startsWith('-') ? 'diff-del' : l.startsWith('@@') ? 'diff-hunk' : undefined}>
-          {l}
-          {'\n'}
-        </span>
+      {diffLines(diff).map((l, i) => (
+        // каждая строка — блок: без лишнего \n, иначе между строками появляются пустые
+        <span key={i} className={`diff-line diff-${l.kind}`}>{l.text || ' '}</span>
       ))}
     </pre>
   );
