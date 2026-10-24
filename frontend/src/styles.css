@@ -754,3 +754,24 @@ tbody tr:hover td { background: var(--island-2); }
 .decompose-apply button { align-self: flex-start; }
 .decompose-apply .muted { font-size: 12px; }
 .console-live { color: var(--text-3); }
+
+/* ===== палитра блоков над блок-схемой ===== */
+.palette {
+  position: absolute; z-index: 5; top: 10px; left: 10px; max-height: calc(100% - 130px); overflow-y: auto;
+  display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 8px;
+  background: color-mix(in srgb, var(--island) 92%, transparent); border: 1px solid var(--border);
+  border-radius: var(--r-lg); box-shadow: 0 4px 14px rgb(0 0 0 / 0.22);
+}
+.palette-title { font-size: 11px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; padding: 0 4px 2px; }
+.palette-item {
+  height: 26px; padding: 0 9px 0 4px; gap: 3px; font-size: 12px; border-radius: var(--r-sm); cursor: grab;
+  justify-content: flex-start; background: transparent; border: 1px solid transparent; color: var(--text-2);
+}
+.palette-item:hover { color: var(--text); background: var(--island-2); border-color: var(--border); }
+.palette-item:active { cursor: grabbing; }
+.palette-grip { color: var(--text-3); }
+.palette-item.kind-condition .palette-grip { color: var(--k-branch); }
+.palette-item.kind-loop .palette-grip { color: var(--k-loop); }
+.palette-item.kind-try .palette-grip, .palette-item.kind-throw .palette-grip { color: var(--k-error); }
+.react-flow__node.drop-target .block,
+.react-flow__node.drop-target .frame { outline: 2px dashed var(--accent); outline-offset: 4px; }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { Box, Boxes, ChevronRight, CircleAlert, CircleCheck, CircleX, Download, DraftingCompass, FileCode2, FlaskConical, FolderOpen, Gauge, LayoutGrid, Moon, Play, ShieldCheck, SquareFunction, Sun, Terminal, TriangleAlert, Upload, Workflow, X } from 'lucide-react';
 import { api, ApiRequestError, isUnsupported } from './api/client';
 import { applyRunEvent, STREAM_START } from './flow/run';
-import type { DecomposeResult, Diagnostics, Finding, Graph, GraphNode, GraphOpRequest, ProjectState, RunResult, SourceFile, SourceRange, VerifyReport } from './api/types';
+import type { DecomposeResult, Diagnostics, Finding, Graph, GraphNode, GraphOpRequest, NodeKind, ProjectState, RunResult, SourceFile, SourceRange, VerifyReport } from './api/types';
 import { AnalysisPanel, MetricsPanel, type AdviceReply, type AppliedFix } from './components/AnalysisPanel';
 import { DecomposePanel } from './components/DecomposePanel';
 import { exportSummary } from './api/download';
@@ -11,6 +11,8 @@ import { CodeEditor } from './components/CodeEditor';
 import { GraphCanvas } from './components/GraphCanvas';
 import { NodeInspector } from './components/NodeInspector';
 import { Explorer } from './components/Explorer';
+import { BlockPalette } from './components/BlockPalette';
+import { allowedOps } from './flow/edit';
 import { VerifyScreen } from './components/VerifyScreen';
 import { changedLineNumbers, findMethodAgain, firstChangedLine } from './flow/edit';
 import { findingsByNode, nodeAtLine, nodeForFinding } from './flow/sourceMap';
@@ -100,6 +102,8 @@ export function App() {
   /** Big O выделенных блоков блок-схемы (POST /complexity); key — выделение и версия, к которым относится ответ. */
   const [selComplexity, setSelComplexity] = useState<{ key: string; value: string | null } | null>(null);
   const [applyingDecomp, setApplyingDecomp] = useState(false);
+  /** Палитра → инспектор: открыть «Вставить после» с выбранным видом блока. */
+  const [insertIntent, setInsertIntent] = useState<{ kind: NodeKind; seq: number } | null>(null);
   const [theme, setTheme] = useState<Theme>(() => stored<Theme>('jb.theme', 'dark'));
   const [panels, setPanels] = useState<Panels>(() => stored<Panels>('jb.panels', { left: true, right: true, bottom: false }));
   const [rightTab, setRightTab] = useState<RightTab>('problems');
@@ -452,6 +456,19 @@ export function App() {
     focusNode(node);
   };
 
+  const canInsertAfter = (node: GraphNode) => !!graph && allowedOps(node, graph.level).has('insertAfter');
+  /** Вид блока из палитры: брошен на блок или выбран кликом при выделенном блоке → форма вставки в инспекторе. */
+  const insertFromPalette = (kind: NodeKind, target: GraphNode | null) => {
+    if (!target || !canInsertAfter(target)) {
+      setError('Перетащите блок из палитры на блок схемы — новый встанет после него');
+      return;
+    }
+    setError(null);
+    selectNode(target);
+    togglePanel('left', true);
+    setInsertIntent((i) => ({ kind, seq: (i?.seq ?? 0) + 1 }));
+  };
+
   const focusNode = (node: GraphNode) => setFocus((f) => ({ id: node.id, seq: (f?.seq ?? 0) + 1 }));
 
   const selectFinding = (finding: Finding) => {
@@ -623,7 +640,7 @@ export function App() {
             </div>
             {selected && graph && (
               <div className="inspector-dock">
-                <NodeInspector selection={selection} graph={graph} onOp={applyGraphOp} complexity={complexity} />
+                <NodeInspector selection={selection} graph={graph} onOp={applyGraphOp} complexity={complexity} insertIntent={insertIntent} onIntentHandled={() => setInsertIntent(null)} />
                 {graph.level === 'method' && <div className="hint">Shift/Ctrl+клик — выделить несколько блоков подряд</div>}
               </div>
             )}
@@ -660,6 +677,10 @@ export function App() {
         )}
             </div>
             <div className="canvas">
+              {graph?.level === 'method' && (
+                <BlockPalette canPick={selection.length === 1 && canInsertAfter(selection[0])}
+                  onPick={(kind) => insertFromPalette(kind, selection.length === 1 ? selection[0] : null)} />
+              )}
               {graph ? (
                 <GraphCanvas
                   graph={graph}
@@ -669,6 +690,8 @@ export function App() {
                   focus={focus}
                   findings={nodeFindings}
                   theme={theme}
+                  onDropKind={graph.level === 'method' ? insertFromPalette : undefined}
+                  canDropOn={canInsertAfter}
                 />
               ) : (
                 <div className="welcome">
