@@ -1,0 +1,2 @@
+# артефакт tsc -b, меняется при каждой сборке
+tsconfig.tsbuildinfo
