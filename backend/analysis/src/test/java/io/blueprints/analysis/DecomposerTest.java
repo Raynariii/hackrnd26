@@ -115,6 +115,41 @@ class DecomposerTest {
     }
 
     @Test
+    void propagatesLabelsOverDependencyGraph() {
+        String source = """
+                class Monolith {
+                    void parseInput() {
+                        helperOne();
+                    }
+
+                    void helperOne() {
+                        helperTwo();
+                    }
+
+                    void helperTwo() {
+                    }
+
+                    void analyzeData() {
+                        stepAlpha();
+                    }
+
+                    void stepAlpha() {
+                        stepBeta();
+                    }
+
+                    void stepBeta() {
+                    }
+                }
+                """;
+
+        Decomposer.Proposal proposal = propose(source);
+
+        // helperTwo никто не зовёт по имени-подсказке: метка приходит только вторым проходом propagation.
+        assertThat(members(proposal, "Parser")).contains("parseInput()", "helperOne()", "helperTwo()");
+        assertThat(members(proposal, "Analyzer")).contains("analyzeData()", "stepAlpha()", "stepBeta()");
+    }
+
+    @Test
     void reportsPartitionCohesionForJury() {
         String source = """
                 class Monolith {
