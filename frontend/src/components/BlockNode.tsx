@@ -12,6 +12,8 @@ const BRANCH = 'var(--k-branch)';
 const LOOP = 'var(--k-loop)';
 const ERROR = 'var(--k-error)';
 
+const TYPE_KINDS = new Set<GraphNode['kind']>(['class', 'interface', 'enum', 'record']);
+
 /** Map, а не объект: у объекта ключ 'constructor' вернул бы Object.prototype.constructor. */
 export const KIND_COLORS = new Map<GraphNode['kind'], string>([
   ['class', TYPE], ['interface', TYPE], ['enum', TYPE], ['record', TYPE],
@@ -73,7 +75,8 @@ export function BlockNode({ data }: NodeProps) {
   return (
     <div
       className={`block shape-${shape} ${selected ? 'selected' : ''} ${findings ? 'has-findings' : ''}`}
-      style={{ width: size.width, height: size.height, borderColor: color, ['--kind' as string]: color }}
+      // Рамку красят только управляющие конструкции; у типов и операторов — нейтральная рамка темы.
+      style={{ width: size.width, height: size.height, borderColor: KIND_COLORS.has(node.kind) && !TYPE_KINDS.has(node.kind) ? color : undefined, ['--kind' as string]: color }}
       title={node.code ?? node.label}
     >
       {outlined && <ShapeOutline shape={shape} size={size} color={color} />}
@@ -104,7 +107,7 @@ export function FrameNode({ data }: NodeProps) {
   const node = (data as { node: GraphNode }).node;
   const color = kindColor(node.kind);
   return (
-    <div className="frame" style={{ borderColor: color, ['--kind' as string]: color }}>
+    <div className={`frame ${TYPE_KINDS.has(node.kind) ? 'frame-type' : ''}`} style={{ ['--kind' as string]: color }}>
       <div className="frame-title" style={{ color: titleColor(node.kind) }}>{frameTitle(node)}</div>
     </div>
   );

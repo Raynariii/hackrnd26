@@ -86,7 +86,7 @@ export function App() {
   const [applied, setApplied] = useState<AppliedFix | null>(null);
   const [beforeFix, setBeforeFix] = useState<SourceFile[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [theme, setTheme] = useState<Theme>(() => stored<Theme>('jb.theme', 'light'));
+  const [theme, setTheme] = useState<Theme>(() => stored<Theme>('jb.theme', 'dark'));
   const [panels, setPanels] = useState<Panels>(() => stored<Panels>('jb.panels', { left: true, right: true, bottom: false }));
   const [rightTab, setRightTab] = useState<RightTab>('problems');
   const [bottomTab, setBottomTab] = useState<BottomTab>('console');
