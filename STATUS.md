@@ -171,7 +171,11 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 - [ ] bench-входы `corpus/*/inputs/bench-*.txt` растущего размера (G4)
 - [ ] монолиты организаторов → `corpus/` (G8, как только лид их получит)
 - [ ] `docs/scope.md`: матрица «конструкция → граф / генерация / тест» по разделам 1–4 + бонус (G9)
-- [ ] фаззинг статических методов через генерируемую обвязку (G5, P2)
+- [x] фаззинг статических методов через генерируемую обвязку (G5, PR — `feat/verify-fuzz`, поверх #31): `FuzzHarness`
+      роли 1 → обвязка добавляется к обеим версиям, run-batch с `mainClass`, вывод сравнивается одним случаем, в
+      `mismatch` — метод, на котором разошлось. Включено по умолчанию (`fuzz=true`) в verify и quality gate. На корпусе
+      01/03/04/05: 7–26 методов × 20 вызовов, детерминированно, verify ~6 с. Ловит то, до чего stdin не дотягивается:
+      `03-bank`, изменён `commission()` → «метод commission: stdout: строка 478 …»
 - [x] генерация JUnit golden-master + `GET /export` (zip) (PR — `feat/api-export`): Maven-проект с текущими исходниками,
       `original/` (v1), `changes.diff`, `GoldenMasterTest` (JUnit 5, запускает текущую версию процессом и сверяет
       stdout/stderr/exit с эталонами v1 после нормализации verify), `golden/NN.*`, `verify-report.json`, `README.md`

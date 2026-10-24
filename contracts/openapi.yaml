@@ -555,7 +555,13 @@ components:
           type: array
           items: { type: string }
           description: 'stdin-входы; если пусто — берутся сохранённые и сгенерированные'
-        fuzz: { type: boolean, default: true }
+        fuzz:
+          type: boolean
+          default: true
+          description: |
+            Граничные stdin-входы + фаззинг статических методов: обвязка (core FuzzHarness) вызывает каждый общий для обеих
+            версий статический метод на одних и тех же детерминированных аргументах (20 вызовов), вывод сравнивается —
+            один случай «Фаззинг статических методов: N × 20 вызовов» (input = null); mismatch начинается с «метод <имя>:».
         benchmark: { type: boolean, default: false }
         benchmarkInputs:
           type: array

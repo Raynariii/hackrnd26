@@ -9,6 +9,7 @@ import io.blueprints.api.web.Dto.RunResult;
 import io.blueprints.api.web.Dto.VerifyCase;
 import io.blueprints.api.web.Dto.VerifyReport;
 import io.blueprints.api.web.Dto.VerifyRequest;
+import io.blueprints.core.model.JavaProjectParser;
 import io.blueprints.core.model.ParseProblem;
 import io.blueprints.core.model.SourceFile;
 import org.junit.jupiter.api.Test;
@@ -38,7 +39,7 @@ class VerifyServiceTest {
 
     /** Песочница: по содержимому файла выбирает «программу». */
     private BatchRunner fake(Function<String, RunResult> v1, Function<String, RunResult> v2, List<Integer> calls) {
-        return (files, inputs, timeoutMs) -> {
+        return (files, mainClass, inputs, timeoutMs) -> {
             synchronized (calls) { // эталон и текущая версия запускаются параллельно
                 calls.add(inputs.size());
             }
@@ -56,7 +57,7 @@ class VerifyServiceTest {
     }
 
     private VerifyService service(BatchRunner runner) {
-        return new VerifyService(runner, new CorpusInputs(corpusDir.toString()), 10_000, 40);
+        return new VerifyService(runner, new CorpusInputs(corpusDir.toString()), new JavaProjectParser(), 10_000, 40);
     }
 
     @Test
@@ -185,5 +186,67 @@ class VerifyServiceTest {
                 .verify(V1, 1, V2, 2, List.of("1"), new VerifyRequest(List.of("1", "1", "0\n"), true, null, null));
 
         assertThat(report.cases()).extracting(VerifyCase::input).doesNotHaveDuplicates();
+    }
+
+    // ---------------------------------------------------------------- фаззинг статических методов (G5)
+
+    private static final List<SourceFile> F1 = List.of(new SourceFile("Main.java",
+            "class Main { static int square(int x) { return x * x; } static String tag(String s) { return \"<\" + s + \">\"; } /* v1 */ }"));
+    private static final List<SourceFile> F2 = List.of(new SourceFile("Main.java",
+            "class Main { static int square(int x) { return x * x; } static String tag(String s) { return \"[\" + s + \"]\"; } /* v2 */ }"));
+
+    /** Обычные входы печатают одно и то же; обвязка фаззинга — по-разному для tag(), если differs. */
+    private BatchRunner fuzzAware(boolean differs, List<String> mains) {
+        return (files, mainClass, inputs, timeoutMs) -> {
+            synchronized (mains) {
+                mains.add(String.valueOf(mainClass));
+            }
+            if (mainClass == null) {
+                return new RunBatchResult(OK, inputs.stream().map(i -> out("ok\n")).toList());
+            }
+            assertThat(files).extracting(SourceFile::path).contains("Main.java", "BlueprintsFuzzHarness.java");
+            boolean v2 = files.get(0).content().contains("v2");
+            String tag = differs && v2 ? "tag(\"a\") -> \"[a]\"" : "tag(\"a\") -> \"<a>\"";
+            return new RunBatchResult(OK, List.of(out("square(0) -> 0\nsquare(3) -> 9\n" + tag + "\n")));
+        };
+    }
+
+    @Test
+    void fuzzingStaticMethodsCatchesChangedMethodAndNamesIt() {
+        List<String> mains = new ArrayList<>();
+        VerifyReport report = service(fuzzAware(true, mains))
+                .verify(F1, 1, F2, 2, List.of(), new VerifyRequest(List.of("1"), true, null, null));
+
+        VerifyCase fuzz = report.cases().stream().filter(c -> c.name().startsWith("Фаззинг")).findFirst().orElseThrow();
+        assertThat(fuzz.name()).isEqualTo("Фаззинг статических методов: 2 × 20 вызовов");
+        assertThat(fuzz.ok()).isFalse();
+        assertThat(fuzz.input()).isNull();
+        assertThat(fuzz.mismatch()).startsWith("метод tag: stdout: строка 3");
+        assertThat(report.behaviorPreserved()).isFalse();
+        assertThat(mains).contains("BlueprintsFuzzHarness");
+    }
+
+    @Test
+    void fuzzingPassesWhenMethodsBehaveTheSameAndCanBeTurnedOff() {
+        VerifyReport same = service(fuzzAware(false, new ArrayList<>()))
+                .verify(F1, 1, F2, 2, List.of(), new VerifyRequest(List.of("1"), true, null, null));
+        assertThat(same.behaviorPreserved()).isTrue();
+        assertThat(same.cases()).anyMatch(c -> c.name().startsWith("Фаззинг") && c.ok());
+
+        List<String> mains = new ArrayList<>();
+        VerifyReport off = service(fuzzAware(true, mains))
+                .verify(F1, 1, F2, 2, List.of(), new VerifyRequest(List.of("1"), false, null, null));
+        assertThat(off.cases()).noneMatch(c -> c.name().startsWith("Фаззинг"));
+        assertThat(mains).doesNotContain("BlueprintsFuzzHarness");
+    }
+
+    @Test
+    void brokenHarnessDoesNotBreakVerify() {
+        BatchRunner runner = (files, mainClass, inputs, timeoutMs) -> mainClass == null
+                ? new RunBatchResult(OK, inputs.stream().map(i -> out("ok\n")).toList())
+                : null;
+        VerifyReport report = service(runner).verify(F1, 1, F2, 2, List.of(), new VerifyRequest(List.of("1"), true, null, null));
+        assertThat(report.behaviorPreserved()).isTrue();
+        assertThat(report.cases()).noneMatch(c -> c.name().startsWith("Фаззинг"));
     }
 }

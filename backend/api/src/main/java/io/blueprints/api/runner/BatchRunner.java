@@ -9,5 +9,10 @@ import java.util.List;
 @FunctionalInterface
 public interface BatchRunner {
 
-    RunBatchResult runBatch(List<SourceFile> files, List<String> inputs, int timeoutMs);
+    /** {@code mainClass} — FQN точки входа; null — песочница ищет класс с main сама. */
+    RunBatchResult runBatch(List<SourceFile> files, String mainClass, List<String> inputs, int timeoutMs);
+
+    default RunBatchResult runBatch(List<SourceFile> files, List<String> inputs, int timeoutMs) {
+        return runBatch(files, null, inputs, timeoutMs);
+    }
 }
