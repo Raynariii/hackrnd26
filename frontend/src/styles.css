@@ -691,7 +691,7 @@ tbody tr:hover td { background: var(--island-2); }
 .finding {
   position: relative; border-radius: var(--r-lg); padding: 14px 14px 14px 16px; overflow: hidden;
   background:
-    linear-gradient(90deg, color-mix(in srgb, var(--sev, var(--text-3)) 16%, transparent) 0%, transparent 100%),
+    linear-gradient(90deg, color-mix(in srgb, var(--sev, var(--text-3)) 8%, transparent) 0%, transparent 100%),
     var(--island);
   border: 1px solid color-mix(in srgb, var(--sev, var(--text-3)) 22%, var(--border));
 }
@@ -702,7 +702,7 @@ tbody tr:hover td { background: var(--island-2); }
 .finding:hover {
   border-color: color-mix(in srgb, var(--sev, var(--accent)) 45%, var(--border));
   background:
-    linear-gradient(90deg, color-mix(in srgb, var(--sev, var(--text-3)) 22%, transparent) 0%, transparent 100%),
+    linear-gradient(90deg, color-mix(in srgb, var(--sev, var(--text-3)) 12%, transparent) 0%, transparent 100%),
     var(--island);
 }
 .finding.open { border-color: color-mix(in srgb, var(--sev, var(--accent)) 55%, var(--border)); }
