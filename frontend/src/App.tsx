@@ -5,6 +5,7 @@ import { AnalysisPanel } from './components/AnalysisPanel';
 import { BottomPanel } from './components/BottomPanel';
 import { CodeEditor } from './components/CodeEditor';
 import { GraphCanvas } from './components/GraphCanvas';
+import { VerifyScreen } from './components/VerifyScreen';
 import { findingsByNode, nodeAtLine, nodeForFinding } from './flow/sourceMap';
 
 export function App() {
@@ -19,6 +20,8 @@ export function App() {
   const [focus, setFocus] = useState<{ id: string; seq: number } | null>(null);
   const [run, setRun] = useState<RunResult | null>(null);
   const [verify, setVerify] = useState<VerifyReport | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const [showVerify, setShowVerify] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const nodeFindings = useMemo(
@@ -71,6 +74,19 @@ export function App() {
       await loadProject(await api.updateSource(project.id, project.version, files));
     });
 
+  /** Дифф-тесты версия 1 vs текущая + замер времени; отчёт открывается поверх холста. */
+  const runVerify = () =>
+    guard(async () => {
+      if (!project) return;
+      setVerifying(true);
+      try {
+        setVerify(await api.verify(project.id, { fuzz: true, benchmark: true }));
+        setShowVerify(true);
+      } finally {
+        setVerifying(false);
+      }
+    });
+
   const selectNode = (node: GraphNode) => {
     setSelected(node);
     setHighlight(node.range ?? null);
@@ -113,7 +129,7 @@ export function App() {
         <button disabled={!project} onClick={applySource}>Применить код</button>
         <button disabled={!project} onClick={() => project && guard(async () => showGraph(await api.getGraph(project.id)))}>Обзор</button>
         <button disabled={!project} onClick={() => project && guard(async () => setRun(await api.run(project.id)))}>▶ Запуск</button>
-        <button disabled={!project} onClick={() => project && guard(async () => setVerify(await api.verify(project.id)))}>Проверить</button>
+        <button disabled={!project || verifying} onClick={runVerify}>{verifying ? 'Проверяем…' : 'Проверить'}</button>
         {project && <span className="muted">v{project.version}</span>}
         {error && <span className="error">{error}</span>}
       </header>
@@ -148,6 +164,9 @@ export function App() {
         ) : (
           <div className="empty">Импортируйте .java-файл, чтобы построить граф</div>
         )}
+        {showVerify && verify && (
+          <VerifyScreen report={verify} running={verifying} onRerun={runVerify} onClose={() => setShowVerify(false)} />
+        )}
       </main>
 
       <aside className="analysis-panel">
@@ -159,7 +178,7 @@ export function App() {
       </section>
 
       <section className="output">
-        <BottomPanel run={run} verify={verify} />
+        <BottomPanel run={run} verify={verify} onOpenReport={() => setShowVerify(true)} />
       </section>
     </div>
   );

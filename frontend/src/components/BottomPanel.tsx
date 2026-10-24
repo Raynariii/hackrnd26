@@ -4,9 +4,10 @@ import type { RunResult, VerifyReport } from '../api/types';
 interface Props {
   run: RunResult | null;
   verify: VerifyReport | null;
+  onOpenReport: () => void;
 }
 
-export function BottomPanel({ run, verify }: Props) {
+export function BottomPanel({ run, verify, onOpenReport }: Props) {
   const [tab, setTab] = useState<'console' | 'tests'>('console');
   return (
     <div className="bottom">
@@ -29,6 +30,7 @@ export function BottomPanel({ run, verify }: Props) {
               <div className={verify.behaviorPreserved ? 'ok' : 'fail'}>
                 {verify.behaviorPreserved ? '✓ Поведение совпадает' : '✗ Поведение изменилось'} — {verify.passed} из {verify.total}
               </div>
+              <button className="link-button" onClick={onOpenReport}>Открыть отчёт</button>
               <ul>
                 {verify.cases.map((c) => (
                   <li key={c.name} className={c.ok ? 'ok' : 'fail'}>{c.ok ? '✓' : '✗'} {c.name}{c.mismatch ? ` — ${c.mismatch}` : ''}</li>

@@ -1,4 +1,4 @@
-import type { ApiError, Diagnostics, Graph, ProjectState, RunResult, SourceFile, VerifyReport } from './types';
+import type { ApiError, Diagnostics, Graph, ProjectState, RunResult, SourceFile, VerifyReport, VerifyRequest } from './types';
 import { mockApi } from '../mocks/mockApi';
 
 export class ApiRequestError extends Error {
@@ -30,7 +30,7 @@ const realApi = {
     request<Graph>('GET', `/projects/${id}/graph?level=${level}${method ? `&method=${encodeURIComponent(method)}` : ''}`),
   getDiagnostics: (id: string) => request<Diagnostics>('GET', `/projects/${id}/diagnostics`),
   run: (id: string, stdin = '') => request<RunResult>('POST', `/projects/${id}/run`, { stdin }),
-  verify: (id: string) => request<VerifyReport>('POST', `/projects/${id}/verify`, {}),
+  verify: (id: string, body: VerifyRequest = {}) => request<VerifyReport>('POST', `/projects/${id}/verify`, body),
 };
 
 export type Api = typeof realApi;

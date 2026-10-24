@@ -119,6 +119,14 @@ export interface VerifyCase {
   mismatch?: string | null;
 }
 
+export interface VerifyRequest {
+  /** stdin-входы; если пусто — сервер берёт сохранённые и сгенерированные. */
+  inputs?: string[];
+  fuzz?: boolean;
+  benchmark?: boolean;
+  benchmarkInputs?: { n: number; stdin: string }[];
+}
+
 export interface VerifyReport {
   baselineVersion?: number;
   currentVersion?: number;

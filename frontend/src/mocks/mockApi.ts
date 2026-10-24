@@ -1,8 +1,9 @@
-import type { Diagnostics, Graph, ProjectState, RunResult, SourceFile, VerifyReport } from '../api/types';
-import { mockDiagnostics, mockMethodFlow, mockOverview, mockProject, mockRun, mockVerify } from './fixtures';
+import type { Diagnostics, Graph, ProjectState, RunResult, SourceFile, VerifyReport, VerifyRequest } from '../api/types';
+import { mockDiagnostics, mockMethodFlow, mockOverview, mockProject, mockRun, mockVerify, mockVerifyFail } from './fixtures';
 import { realDemos } from './realDemos';
 
 /** ?demo=flow | ?demo=orders — настоящие графы ядра вместо ручного мока (см. realDemos.ts). */
+const params = new URLSearchParams(globalThis.location?.search ?? '');
 const demo = realDemos[new URLSearchParams(globalThis.location?.search ?? '').get('demo') ?? ''];
 
 const delay = <T,>(value: T) => new Promise<T>((resolve) => setTimeout(() => resolve(structuredClone(value)), 150));
@@ -30,5 +31,9 @@ export const mockApi = {
   getDiagnostics: (_id: string): Promise<Diagnostics> =>
     delay(demo ? { version: project.version, ...demo.diagnostics } : mockDiagnostics),
   run: (_id: string, _stdin = ''): Promise<RunResult> => delay(mockRun),
-  verify: (_id: string): Promise<VerifyReport> => delay(mockVerify),
+  verify: (_id: string, body: VerifyRequest = {}): Promise<VerifyReport> => {
+    const report = params.get('verify') === 'fail' ? mockVerifyFail : mockVerify;
+    const withVersion = { ...report, currentVersion: project.version };
+    return delay(body.benchmark ? withVersion : { ...withVersion, benchmark: undefined });
+  },
 };
