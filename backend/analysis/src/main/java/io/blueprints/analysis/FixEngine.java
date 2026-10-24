@@ -25,9 +25,7 @@ import io.blueprints.core.model.ProjectModel;
 import io.blueprints.core.model.SourceFile;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashSet;
-import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -54,10 +52,6 @@ public final class FixEngine {
     public record Applied(Finding finding, List<SourceFile> files, String description) {
     }
 
-    private static final Set<String> MUTATORS = Set.of(
-            "add", "addAll", "remove", "removeAll", "removeIf", "retainAll", "clear", "set", "sort",
-            "replaceAll", "poll", "pollFirst", "pollLast", "push", "pop", "offer", "offerFirst", "offerLast");
-
     private static final Set<Long> ALLOWED_MAGIC = Set.of(-1L, 0L, 1L, 2L);
 
     private final JavaProjectParser parser = new JavaProjectParser();
@@ -76,11 +70,9 @@ public final class FixEngine {
         if (finding.fix() == null) {
             throw new FixNotApplicableException("У находки " + findingId + " нет предложенного исправления");
         }
-        if (!finding.fix().autoApplicable()) {
-            throw new FixNotApplicableException("Исправление «" + finding.fix().description()
-                    + "» требует ручной правки: автоматически менять код небезопасно");
-        }
         Node anchor = anchorNode(model, finding);
+        // Тот же расчёт, что выставляет Fix.autoApplicable в диагностике: текст отказа совпадает с UI.
+        FixSafety.require(finding.rule(), anchor);
         String description = switch (finding.rule()) {
             case "collection-lookup-in-loop" -> indexInsteadOfLookup((MethodCallExpr) anchor);
             case "string-concat-in-loop" -> stringBuilder((AssignExpr) anchor);
@@ -112,16 +104,15 @@ public final class FixEngine {
     // ---------------------------------------------------------------- HashSet вместо поиска
 
     private String indexInsteadOfLookup(MethodCallExpr call) {
+        FixSafety.require("collection-lookup-in-loop", call);
         Node loop = nearestLoop(call);
-        String receiver = receiverName(call);
-        requireNotDeclaredInside(loop, receiver);
-        requireNotMutated(loop, receiver);
+        String receiver = receiverOrFail(call);
         String index = uniqueName(call, "_index");
         Statement declaration = StaticJavaParser.parseStatement(
                 "var " + index + " = new java.util.HashSet<>(" + receiver + ");");
         insertBefore(loopStatement(loop), declaration);
         for (MethodCallExpr candidate : loop.findAll(MethodCallExpr.class)) {
-            if (candidate.getNameAsString().equals("contains") && receiver.equals(receiverName(candidate))) {
+            if (candidate.getNameAsString().equals("contains") && receiver.equals(FixSafety.receiverName(candidate))) {
                 candidate.setScope(new NameExpr(index));
             }
         }
@@ -131,18 +122,17 @@ public final class FixEngine {
     // ---------------------------------------------------------------- StringBuilder вместо +=
 
     private String stringBuilder(AssignExpr assign) {
+        FixSafety.require("string-concat-in-loop", assign);
         Node loop = nearestLoop(assign);
-        String variable = assignTargetName(assign);
-        requireNotDeclaredInside(loop, variable);
-        requireNoReadsInside(loop, variable);
+        String variable = targetOrFail(assign);
         String builder = uniqueName(assign, "_sb");
         insertBefore(loopStatement(loop), StaticJavaParser.parseStatement(
                 "var " + builder + " = new java.lang.StringBuilder();"));
         for (AssignExpr candidate : loop.findAll(AssignExpr.class)) {
-            if (!variable.equals(assignTargetName(candidate))) {
+            if (!variable.equals(FixSafety.assignTargetName(candidate))) {
                 continue;
             }
-            Expression appended = appendedValue(candidate);
+            Expression appended = FixSafety.appendedValue(candidate);
             if (appended == null) {
                 continue;
             }
@@ -153,21 +143,10 @@ public final class FixEngine {
         return "Конкатенация заменена на StringBuilder " + builder + ": строка не копируется на каждой итерации";
     }
 
-    private static Expression appendedValue(AssignExpr assign) {
-        if (assign.getOperator() == AssignExpr.Operator.PLUS) {
-            return assign.getValue();
-        }
-        if (assign.getOperator() == AssignExpr.Operator.ASSIGN
-                && assign.getValue() instanceof BinaryExpr binary
-                && binary.getOperator() == BinaryExpr.Operator.PLUS) {
-            return binary.getRight();
-        }
-        return null;
-    }
-
     // ---------------------------------------------------------------- константа вместо числа
 
     private String constantInsteadOfMagicNumber(Statement statement) {
+        FixSafety.require("magic-number", statement);
         ClassOrInterfaceDeclaration type = statement.findAncestor(ClassOrInterfaceDeclaration.class)
                 .orElseThrow(() -> new FixNotApplicableException("Число вне класса: константу некуда вынести"));
         Map<String, String> constants = new LinkedHashMap<>();
@@ -200,20 +179,19 @@ public final class FixEngine {
     // ---------------------------------------------------------------- for-each вместо get(i)
 
     private String forEachInsteadOfIndex(MethodCallExpr call) {
+        FixSafety.require("linked-list-index-access", call);
         Node loopNode = nearestLoop(call);
         if (!(loopNode instanceof ForStmt loop)) {
             throw new FixNotApplicableException("Обращение по индексу вне классического for: меняйте вручную");
         }
         String counter = Ast.counterVariable(loop);
-        String receiver = receiverName(call);
+        String receiver = receiverOrFail(call);
         if (counter == null) {
             throw new FixNotApplicableException("У цикла нет переменной-счётчика");
         }
-        requireNotMutated(loop, receiver);
-        requireCounterUsedOnlyForIndex(loop, counter, receiver);
         String item = uniqueName(call, "_item");
         for (MethodCallExpr candidate : loop.getBody().findAll(MethodCallExpr.class)) {
-            if ("get".equals(candidate.getNameAsString()) && receiver.equals(receiverName(candidate))) {
+            if ("get".equals(candidate.getNameAsString()) && receiver.equals(FixSafety.receiverName(candidate))) {
                 candidate.replace(new NameExpr(item));
             }
         }
@@ -223,28 +201,6 @@ public final class FixEngine {
                 loop.getBody());
         loop.replace(each);
         return "Индексация заменена на for-each: LinkedList обходится за один проход";
-    }
-
-    private static void requireCounterUsedOnlyForIndex(Node loop, String counter, String receiver) {
-        Statement body = Ast.loopBody(loop);
-        if (body == null) {
-            return;
-        }
-        for (NameExpr name : body.findAll(NameExpr.class)) {
-            if (!name.getNameAsString().equals(counter)) {
-                continue;
-            }
-            boolean indexOfGet = name.getParentNode().stream()
-                    .map(parent -> parent instanceof MethodCallExpr call
-                            && "get".equals(call.getNameAsString())
-                            && receiver.equals(receiverName(call)))
-                    .findFirst()
-                    .orElse(false);
-            if (!indexOfGet) {
-                throw new FixNotApplicableException("Переменная " + counter
-                        + " используется не только в get(): переход на for-each изменил бы поведение");
-            }
-        }
     }
 
     // ---------------------------------------------------------------- общие проверки и правки
@@ -261,70 +217,20 @@ public final class FixEngine {
         throw new FixNotApplicableException("Цикл не является оператором — исправление вручную");
     }
 
-    private static String receiverName(MethodCallExpr call) {
-        Expression scope = call.getScope().orElse(null);
-        if (scope instanceof NameExpr name) {
-            return name.getNameAsString();
+    private static String receiverOrFail(MethodCallExpr call) {
+        String receiver = FixSafety.receiverName(call);
+        if (receiver == null) {
+            throw new FixNotApplicableException("Получатель вызова — не простая переменная: исправление вручную");
         }
-        throw new FixNotApplicableException("Получатель вызова — не простая переменная: исправление вручную");
+        return receiver;
     }
 
-    private static String assignTargetName(AssignExpr assign) {
-        if (assign.getTarget() instanceof NameExpr name) {
-            return name.getNameAsString();
+    private static String targetOrFail(AssignExpr assign) {
+        String target = FixSafety.assignTargetName(assign);
+        if (target == null) {
+            throw new FixNotApplicableException("Слева не переменная: исправление вручную");
         }
-        if (assign.getTarget() instanceof com.github.javaparser.ast.expr.FieldAccessExpr field) {
-            return field.getNameAsString();
-        }
-        throw new FixNotApplicableException("Слева не переменная: исправление вручную");
-    }
-
-    private static void requireNotDeclaredInside(Node scope, String variable) {
-        for (VariableDeclarator declarator : scope.findAll(VariableDeclarator.class)) {
-            if (declarator.getNameAsString().equals(variable)) {
-                throw new FixNotApplicableException("Переменная " + variable
-                        + " объявлена внутри цикла: вынести исправление наружу нельзя");
-            }
-        }
-    }
-
-    private static void requireNotMutated(Node scope, String receiver) {
-        for (MethodCallExpr call : scope.findAll(MethodCallExpr.class)) {
-            if (MUTATORS.contains(call.getNameAsString())
-                    && call.getScope().filter(NameExpr.class::isInstance)
-                            .map(Node::toString)
-                            .filter(receiver::equals)
-                            .isPresent()) {
-                throw new FixNotApplicableException("Коллекция " + receiver
-                        + " меняется внутри цикла: индекс устарел бы, исправление вручную");
-            }
-        }
-        for (AssignExpr assign : scope.findAll(AssignExpr.class)) {
-            if (assign.getTarget() instanceof NameExpr name && name.getNameAsString().equals(receiver)) {
-                throw new FixNotApplicableException("Переменная " + receiver
-                        + " переприсваивается внутри цикла: исправление вручную");
-            }
-        }
-    }
-
-    /** Строку читают внутри цикла — StringBuilder изменил бы смысл; такое не правим автоматически. */
-    private static void requireNoReadsInside(Node loop, String variable) {
-        Set<Node> writes = Collections.newSetFromMap(new IdentityHashMap<>());
-        for (AssignExpr assign : loop.findAll(AssignExpr.class)) {
-            if (!variable.equals(assignTargetName(assign)) || appendedValue(assign) == null) {
-                continue;
-            }
-            writes.add(assign.getTarget());
-            if (assign.getValue() instanceof BinaryExpr binary && binary.getLeft() instanceof NameExpr left) {
-                writes.add(left);
-            }
-        }
-        for (NameExpr name : loop.findAll(NameExpr.class)) {
-            if (name.getNameAsString().equals(variable) && !writes.contains(name)) {
-                throw new FixNotApplicableException("Строка " + variable
-                        + " читается внутри цикла: замена на StringBuilder изменила бы поведение");
-            }
-        }
+        return target;
     }
 
     private static void insertBefore(Statement target, Statement statement) {

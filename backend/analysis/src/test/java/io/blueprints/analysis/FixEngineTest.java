@@ -220,7 +220,7 @@ class FixEngineTest {
 
         assertThatThrownBy(() -> apply(source, "nested-loop-same-collection"))
                 .isInstanceOf(FixNotApplicableException.class)
-                .hasMessageContaining("требует ручной правки");
+                .hasMessageContaining("не реализовано");
     }
 
     @Test

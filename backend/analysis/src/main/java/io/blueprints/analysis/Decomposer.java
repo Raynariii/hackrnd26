@@ -49,7 +49,8 @@ public final class Decomposer {
             Responsibility.PARSER, List.of("read", "parse", "load", "scan", "input", "token", "file", "line",
                     "prompt", "next", "import", "extract"),
             Responsibility.ANALYZER, List.of("analyz", "valid", "check", "detect", "find", "count", "stat",
-                    "report", "comput", "calculat", "summar", "metric", "inspect", "verif", "evaluat"),
+                    "report", "comput", "calculat", "summar", "metric", "inspect", "verif", "evaluat",
+                    "process", "classif", "match", "resolv"),
             Responsibility.OPTIMIZER, List.of("optim", "sort", "dedup", "merge", "cach", "index", "normaliz",
                     "clean", "filter", "group", "aggregat", "compress", "reduce", "batch"),
             Responsibility.MAIN, List.of("main", "run", "start", "execut", "demo", "cli", "menu", "usage"));

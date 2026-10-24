@@ -78,6 +78,39 @@ class DecomposerTest {
     }
 
     @Test
+    void groupsBusinessProcessingWithAnalyzer() {
+        String source = """
+                class Monolith {
+                    void readFile(String path) { }
+
+                    String parseLine(String line) {
+                        return line;
+                    }
+
+                    void processOrders(java.util.List<String> orders) {
+                    }
+
+                    boolean validateOrder(String order) {
+                        return order != null;
+                    }
+
+                    void sortOrders(java.util.List<String> orders) {
+                        orders.sort(null);
+                    }
+
+                    void deduplicate(java.util.List<String> orders) {
+                    }
+                }
+                """;
+
+        Decomposer.Proposal proposal = propose(source);
+
+        assertThat(members(proposal, "Analyzer")).contains("processOrders(List)", "validateOrder(String)");
+        assertThat(members(proposal, "Parser")).contains("readFile(String)", "parseLine(String)");
+        assertThat(members(proposal, "Optimizer")).contains("sortOrders(List)", "deduplicate(List)");
+    }
+
+    @Test
     void keepsFieldsUsedByMovedMethods() {
         String source = """
                 class Monolith {

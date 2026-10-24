@@ -87,10 +87,17 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 - [x] авто-исправления для 4 правил (`FixEngine`): HashSet-индекс вместо `List.contains`, `StringBuilder` вместо `+=`,
       константа вместо «магического» числа, for-each вместо `LinkedList.get(i)`; каждая правка проверяется javac в тесте,
       отказ от небезопасных случаев (переменная объявлена в цикле, коллекция меняется, строку читают в цикле)
-- [ ] `POST /fixes/{id}` в api: подключить `FixEngine.apply(files, findingId)` — запрос роли 4 (см. «Запросы»)
+- [x] `POST /fixes/{id}` и `POST /decompose` подключены в api (роль 4, PR #21 → #23): правка идёт через
+      `FixEngine` + quality gate (компиляция и дифф-тесты), декомпозиция — через `Decomposer`
 - [x] декомпозиция монолита: `Decomposer` предлагает разбиение на `Parser / Analyzer / Optimizer / Main` по именам
       методов и вызовам, с полями, которые нужно перенести (v1 — только предложение, без перемещения кода)
-- [ ] `POST /decompose` в api (apply=false → предложение) — запрос роли 4 (см. «Запросы»)
+- [x] сквозная проверка профиля на живом API (24.10 ~15:25): `POST /projects` → диагностика (9 находок) →
+      `POST /fixes` (небезопасный случай O(n³) честно отбит 422, безопасный применён: O(n²) → O(n), diff в ответе) →
+      повторная диагностика (8 находок, O(n²) больше нет) → `POST /verify`: **поведение совпало, 6/6 тестов** →
+      `POST /decompose`: Parser/Analyzer/Main/Utils. Уточнён словарь декомпозиции (`process`, `classify` → Analyzer)
+- [x] `fix.autoApplicable` считается теми же проверками, что и само применение (`FixSafety` — общий код правил и
+      `FixEngine`): неприменимая находка приходит с причиной в `fix.description`, а `POST /fixes` отказывает этим же
+      текстом. Инвариант закреплён `FixApplicabilityTest` (запрос роли 4)
 - [ ] LLM-помощник (опц.)
 - [x] прогон анализатора по всему `corpus/` (`CorpusAnalysisTest`): любой новый пример корпуса проверяется автоматически —
       разбор без ошибок, метрики по каждому методу, у каждой находки реальный файл, строки и `nodeIds` (PR #11)
@@ -154,9 +161,8 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 | Кто просит | Что | Кому | Статус |
 |---|---|---|---|
 | Роль 2 | `POST /api/projects/{id}/fixes/{findingId}`: вызвать `io.blueprints.analysis.FixEngine#apply(files, findingId)`, закоммитить новую версию и вернуть `ChangeResult` (state + diff); `FixNotApplicableException` → 409/422 с текстом причины. Контракт и контроллер — зона роли 4. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
-| Роль 4 | В `GET /diagnostics` у `collection-lookup-in-loop` стоит `fix.autoApplicable=true`, но `FixEngine.apply` отказывает (коллекция меняется в цикле — `00-hello`, `OrdersMonolith`). Кнопка «Применить» в UI обещает то, чего нет: выставлять `autoApplicable` по тем же проверкам, что и `apply`. | Роль 2 | Открыт |
+| Роль 4 | `fix.autoApplicable` должен совпадать с реальной применимостью: сейчас у `collection-lookup-in-loop` стоит `true`, а `FixEngine.apply` отказывает (коллекция меняется в цикле). | Роль 2 | Сделано — `FixSafety` общий для правил и движка, инвариант закреплён тестом `FixApplicabilityTest` |
 | Роль 2 | `POST /api/projects/{id}/decompose`: `new Decomposer().propose(session.model())` → `DecomposeResult.proposal` (apply=false, v1); при apply=true пока 501 `not_implemented`. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
-| Роль 4 | В `GET /diagnostics` у `collection-lookup-in-loop` стоит `fix.autoApplicable=true`, но `FixEngine.apply` отказывает (коллекция меняется в цикле — `00-hello`, `OrdersMonolith`). Кнопка «Применить» в UI обещает то, чего нет: выставлять `autoApplicable` по тем же проверкам, что и `apply`. | Роль 2 | Открыт |
 
 ## Журнал интеграций
 | Когда | Результат | Что сломалось |

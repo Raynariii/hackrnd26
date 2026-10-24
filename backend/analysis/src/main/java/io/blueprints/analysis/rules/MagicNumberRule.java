@@ -9,6 +9,7 @@ import com.github.javaparser.ast.stmt.Statement;
 import com.github.javaparser.ast.stmt.WhileStmt;
 import io.blueprints.analysis.Finding;
 import io.blueprints.analysis.Fix;
+import io.blueprints.analysis.FixSafety;
 import io.blueprints.analysis.Findings;
 import io.blueprints.analysis.Rule;
 import io.blueprints.analysis.Severity;
@@ -73,13 +74,16 @@ public final class MagicNumberRule implements Rule {
         String constant = "LIMIT_" + first.replace('-', 'M').replace('.', '_');
         String preview = "private static final int " + constant + " = " + first + ";\n"
                 + "// в условии: вместо " + list + " — " + constant;
+        String notApplicable = FixSafety.explain(RULE, statement);
         out.add(Findings.of(model, RULE, Severity.MEDIUM,
                 "Магическое число в условии",
                 "В условии используются числа без имени: " + list + ". Смысл границы непонятен из кода, "
                         + "а при изменении правила легко поправить не все места — вынесите значения в константы.",
                 statement, List.of(statement),
                 null,
-                new Fix("extract-constant", "Вынести число в именованную константу", preview, true),
+                new Fix("extract-constant",
+                        notApplicable != null ? notApplicable : "Вынести число в именованную константу",
+                        preview, notApplicable == null),
                 "Граница получает имя и правится в одном месте"));
     }
 
