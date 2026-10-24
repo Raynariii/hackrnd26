@@ -228,3 +228,6 @@ button.danger { border-color: rgba(239, 68, 68, .6); color: #fca5a5; }
 .decompose-class-head { all: unset; cursor: pointer; display: flex; justify-content: space-between; width: 100%; }
 .decompose-class-head:disabled { cursor: default; }
 .decompose-note, .decompose-stale { font-size: 12px; }
+
+.export-note { font-size: 12px; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.export-note.fail { color: var(--fail); }

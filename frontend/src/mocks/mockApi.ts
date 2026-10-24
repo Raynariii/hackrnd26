@@ -3,6 +3,8 @@ import { mockDiagnostics, mockMethodFlow, mockOverview, mockProject, mockRun, mo
 import { MAIN_FIX_REJECTION, opsDemo, ordersFixesDemo, realDemos, type RealDemo, type Snapshot } from './realDemos';
 import { ApiRequestError } from '../api/errors';
 import decomposeDemo from './real/Decompose.json';
+import { storedZip } from './zip';
+import type { ExportFile } from '../api/download';
 
 /** ?demo=flow | ?demo=orders — настоящие графы ядра вместо ручного мока (см. realDemos.ts). */
 const params = new URLSearchParams(globalThis.location?.search ?? '');
@@ -103,5 +105,15 @@ export const mockApi = {
     const file = demo?.file ?? (opsMode ? opsDemo.file : '');
     const rec = demo === demoOriginal ? (decomposeDemo as Record<string, DecomposeResult>)[file] : undefined;
     return delay(rec ?? { proposal: [], notes: ['В демо разбиение записано только для исходного кода ?demo=orders и ?demo=scope'] });
+  },
+  /** Как GET /export в api (PR #31), но без тестов: в архиве текущий код и README о том, что это демо. */
+  exportProject: (_id: string): Promise<ExportFile> => {
+    const base = `${(project.name ?? 'project').replace(/\.java$/, '')}-v${project.version}`;
+    const files = [
+      ...project.files.map((f) => ({ name: `${base}/src/main/java/${f.path}`, content: f.content })),
+      { name: `${base}/README.md`, content: `# ${base}\n\nДемо-режим без бэкенда: настоящий экспорт (GET /export) кладёт сюда JUnit golden-master тесты против версии 1, эталоны входов и отчёт проверки. Запуск: mvn test.\n` },
+    ];
+    const zip = storedZip(files);
+    return delay({ blob: new Blob([zip.buffer as ArrayBuffer], { type: 'application/zip' }), fileName: `${base}.zip`, passed: '6/6', behaviorPreserved: true });
   },
 };
