@@ -141,9 +141,17 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 **Блокеры:** —
 
 ### 2c — декомпозиция монолита
-- [ ] P1 (после 2a-P0) `apply=true` v1 (G7): перенос static-методов и static-вложенных классов в новые классы,
-      вызовы квалифицируются; результат компилируется (тест javac) и проходит дифф на корпусе. Вход/выход — `List<SourceFile>`,
-      как у `FixEngine`; подключение `apply=true` в `POST /decompose` (сейчас 501) — запрос роли 4
+- [x] P1 `apply=true` v1 (G7) — PR #44: `Decomposer.apply(List<SourceFile>)` → `Decomposer.Applied(files, notes,
+      description)`. Переносит **static-методы** (кроме `main`) и **static-поля**, которые использует только одна
+      группа, в `Parser / Analyzer / Optimizer`: новые файлы рядом с исходным, package и импорты копируются,
+      вызовы между классами квалифицируются (`Parser.readLine(...)`), ссылки на оставшиеся вложенные типы —
+      `Main.OrderLine`; `private` у оставшихся методов/полей снимается. Общее для групп поле не переносится, а
+      методы, которые его трогают, — тоже: компиляция важнее полноты. Результат проверяется повторным разбором,
+      в тестах — настоящим `javac` (7 тестов `DecomposerApplyTest`). Классификация детерминирована (`EnumMap`).
+      Прогон на `01-shop-orders` (631 строка): `Utils` (`audit`, `sameContent`, `printAuditTail` + поле `auditLog`),
+      `javac` зелёный; `06-demo-warehouse` — одна группа Utils, переносить нечего.
+      **Ограничения v1:** static-вложенные типы отдельными файлами не выносятся (квалификация ссылок); instance-методы
+      и общие поля не переносятся; один класс за шаг. **Для api:** `apply=true` всё ещё 501 — запрос роли 4 ниже.
 - [ ] P1 предложение по графу зависимостей методов/полей (label propagation), имена — только как подсказка
 - [ ] P2 метрика качества разбиения (вызовы между предложенными классами) — в `notes` для жюри
 **Блокеры:** —
@@ -219,6 +227,7 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 | Роль 2 | `POST /api/projects/{id}/fixes/{findingId}`: вызвать `io.blueprints.analysis.FixEngine#apply(files, findingId)`, закоммитить новую версию и вернуть `ChangeResult` (state + diff); `FixNotApplicableException` → 409/422 с текстом причины. Контракт и контроллер — зона роли 4. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
 | Роль 4 | В `GET /diagnostics` у `collection-lookup-in-loop` стоит `fix.autoApplicable=true`, но `FixEngine.apply` отказывает (коллекция меняется в цикле — `00-hello`, `OrdersMonolith`). Кнопка «Применить» в UI обещает то, чего нет: выставлять `autoApplicable` по тем же проверкам, что и `apply`. | Роль 2 | Сделано — PR #29: `autoApplicable` = `Fixers.supports(model, finding)` (те же проверки, что и `apply`), текст отказа у 422 совпадает |
 | Роль 2 | `POST /api/projects/{id}/decompose`: `new Decomposer().propose(session.model())` → `DecomposeResult.proposal` (apply=false, v1); при apply=true пока 501 `not_implemented`. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
+| Роль 2 | `POST /api/projects/{id}/decompose` с `apply=true` (сейчас 501): `Decomposer.Applied applied = new Decomposer().apply(beforeFiles)` → quality gate как у `/fixes` (verify baseline vs `applied.files()`) → закоммитить `applied.files()` и вернуть `DecomposeResult.proposal` + `ChangeResult` + `applied.notes()`; `FixNotApplicableException` → 422 с текстом. Контракт уже есть (`DecomposeRequest.apply`), новых полей не нужно. Библиотечная часть готова (PR #44). | Роль 4 | Открыт (P1) |
 | Роль 2 | (опц., P2) `POST /api/projects/{id}/advice` с `{findingId}`: `ClaudeAdvisor.fromEnvironment().advise(...)` по коду метода/фрагмента находки; без `ANTHROPIC_API_KEY` — `enabled=false` → 204; применение совета — только через quality gate (как `/fixes`). Заодно `ANTHROPIC_API_KEY=` в `.env.example` (опц.). Контракт — зона роли 4. | Роль 4 | Открыт (P2) |
 | Роль 2 | (опц., P1) `POST /api/projects/{id}/complexity` с `{version, nodeIds}`: `new MetricsCalculator().complexityOf(session.model(), nodeIds).toString()` → `{current}` для выделенных блоков блок-схемы (фронт уже умеет выделять блоки для `graph/ops`). Библиотечная часть готова (PR #37). Контракт — зона роли 4. | Роль 4 | Открыт (P1) |
 
