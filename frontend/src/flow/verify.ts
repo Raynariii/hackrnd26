@@ -110,3 +110,16 @@ export function verdict(r: VerifyReport): Verdict {
   if (r.total === 0) return 'empty';
   return r.behaviorPreserved ? 'preserved' : 'changed';
 }
+
+/**
+ * Подписи у концов двух линий графика: если концы ближе `gap` пикселей, подписи разводятся симметрично,
+ * а совпавшие (одинаковое время до и после) сливаются в одну — иначе «до» и «после» печатаются друг на друге.
+ */
+export function endLabels(yBefore: number, yAfter: number, gap = 16): { merged: true; y: number } | { merged: false; before: number; after: number } {
+  const d = yAfter - yBefore;
+  if (Math.abs(d) < 3) return { merged: true, y: (yBefore + yAfter) / 2 };
+  if (Math.abs(d) >= gap) return { merged: false, before: yBefore, after: yAfter };
+  const mid = (yBefore + yAfter) / 2;
+  const half = (gap / 2) * Math.sign(d);
+  return { merged: false, before: mid - half, after: mid + half };
+}

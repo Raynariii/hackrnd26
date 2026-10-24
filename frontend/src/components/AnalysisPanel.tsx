@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { CircleAlert, CircleCheck, Info, TriangleAlert, Wand2, X } from 'lucide-react';
+import { CircleAlert, CircleCheck, Info, Sparkles, TriangleAlert, Wand2, X } from 'lucide-react';
 import type { Diagnostics, Finding, VerifyReport } from '../api/types';
 
 /** Последнее применённое авто-исправление — показываем дифф и даём проверить или отменить. */
 export interface AppliedFix {
+  /** Что применено: авто-исправление находки (по умолчанию) или разбиение на классы — баннер в своей вкладке. */
+  kind?: 'fix' | 'decompose';
   title: string;
   description: string;
   diff: string;
@@ -21,7 +23,12 @@ interface Props {
   onUndo: () => void;
   onDismissApplied: () => void;
   verifying: boolean;
+  /** Совет LLM по находке; нет — советчика на сервере нет, кнопка скрыта. */
+  onAdvice?: (finding: Finding) => Promise<AdviceReply>;
 }
+
+/** Ответ советчика для карточки: текст, «выключен» (нет ключа на сервере) или ошибка. */
+export type AdviceReply = { text: string; model: string | null } | { off: true } | { error: string };
 
 /** Метка важности; что она значит для пользователя — во всплывающей подсказке. */
 const SEVERITY: Record<Finding['severity'], { label: string; hint: string }> = {
@@ -44,9 +51,24 @@ function DiffView({ diff }: { diff: string }) {
   );
 }
 
-function FindingCard({ f, onSelect, onFix, open, onToggle }: { f: Finding; onSelect: Props['onSelect']; onFix: Props['onFix']; open: boolean; onToggle: () => void }) {
+/** Совет в markdown: блоки ``` — код, остальное — абзацы как есть (без HTML: текст от модели не вставляем разметкой). */
+function AdviceText({ text }: { text: string }) {
+  const parts = text.split(/```[a-zA-Z]*\n?/);
+  return (
+    <>
+      {parts.map((part, i) => (i % 2 ? <pre key={i} className="advice-code">{part.replace(/\n$/, '')}</pre> : part.trim() && <p key={i}>{part.trim()}</p>))}
+    </>
+  );
+}
+
+function FindingCard({ f, onSelect, onFix, onAdvice, open, onToggle }: { f: Finding; onSelect: Props['onSelect']; onFix: Props['onFix']; onAdvice?: Props['onAdvice']; open: boolean; onToggle: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [advice, setAdvice] = useState<AdviceReply | 'loading' | null>(null);
+  const ask = async () => {
+    setAdvice('loading');
+    setAdvice(await onAdvice!(f));
+  };
   const fix = async () => {
     setBusy(true);
     setError(null);
@@ -95,42 +117,68 @@ function FindingCard({ f, onSelect, onFix, open, onToggle }: { f: Finding; onSel
         </div>
       )}
       {error && <div className="error finding-error" onClick={(e) => e.stopPropagation()}>{error}</div>}
+      {open && onAdvice && (
+        <div className="advice" onClick={(e) => e.stopPropagation()}>
+          {(advice === null || (typeof advice === 'object' && 'error' in advice)) && (
+            <button className="ghost advice-ask" onClick={ask} title="Объяснение и вариант исправления от LLM; применяется правкой кода и проверяется тестами">
+              <Sparkles size={14} />Спросить совет у ИИ
+            </button>
+          )}
+          {advice === 'loading' && <span className="muted"><Sparkles size={14} />Советчик думает…</span>}
+          {advice && typeof advice === 'object' && 'off' in advice && <span className="muted">Советчик выключен на сервере (нет ключа API)</span>}
+          {advice && typeof advice === 'object' && 'error' in advice && <span className="error">{advice.error}</span>}
+          {advice && typeof advice === 'object' && 'text' in advice && (
+            <div className="advice-body">
+              <div className="advice-title"><Sparkles size={14} />Совет ИИ{advice.model && <span className="muted"> · {advice.model}</span>}</div>
+              <AdviceText text={advice.text} />
+              <div className="muted advice-note">Совет — не правка: перенесите его в код и нажмите «Проверить поведение»</div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-export function AnalysisPanel({ diagnostics, onSelect, onFix, applied, onVerify, onUndo, onDismissApplied, verifying }: Props) {
+/** Баннер «применено»: что сделал сервер, отчёт quality gate, дифф, проверка и отмена. */
+export function AppliedBanner({ applied, onVerify, onUndo, onDismiss, verifying }: { applied: AppliedFix; onVerify: () => void; onUndo: () => void; onDismiss: () => void; verifying: boolean }) {
+  return (
+    <div className="applied-fix" role="status">
+      <div className="applied-head">
+        <strong className="ok"><CircleCheck size={16} />{applied.kind === 'decompose' ? 'Разбиение применено' : 'Исправление применено'}</strong>
+        <button className="link-button" onClick={onDismiss} aria-label="Скрыть"><X size={16} /></button>
+      </div>
+      <div>{applied.title}</div>
+      {applied.description && <div className="muted">{applied.description}</div>}
+      {applied.gate && (
+        <div className={applied.gate.behaviorPreserved ? 'ok' : 'fail'}>
+          Quality gate: {applied.gate.passed} из {applied.gate.total} тестов — поведение {applied.gate.behaviorPreserved ? 'не изменилось' : 'изменилось'}
+        </div>
+      )}
+      <details>
+        <summary>Изменения в коде</summary>
+        <DiffView diff={applied.diff} />
+      </details>
+      <div className="inspector-actions">
+        <button className="primary" disabled={verifying} onClick={onVerify}>{verifying ? 'Проверяем…' : 'Проверить поведение'}</button>
+        <button onClick={onUndo}>Отменить</button>
+      </div>
+    </div>
+  );
+}
+
+export function AnalysisPanel({ diagnostics, onSelect, onFix, applied, onVerify, onUndo, onDismissApplied, verifying, onAdvice }: Props) {
   /** Раскрытая карточка: свернутые показывают суть, подробности — по клику (клик же ведёт к коду и блоку). */
   const [openId, setOpenId] = useState<string | null>(null);
   return (
     <div className="analysis">
-      {applied && (
-        <div className="applied-fix" role="status">
-          <div className="applied-head">
-            <strong className="ok"><CircleCheck size={16} />Исправление применено</strong>
-            <button className="link-button" onClick={onDismissApplied} aria-label="Скрыть"><X size={16} /></button>
-          </div>
-          <div>{applied.title}</div>
-          <div className="muted">{applied.description}</div>
-          {applied.gate && (
-            <div className={applied.gate.behaviorPreserved ? 'ok' : 'fail'}>
-              Quality gate: {applied.gate.passed} из {applied.gate.total} тестов — поведение {applied.gate.behaviorPreserved ? 'не изменилось' : 'изменилось'}
-            </div>
-          )}
-          <details>
-            <summary>Изменения в коде</summary>
-            <DiffView diff={applied.diff} />
-          </details>
-          <div className="inspector-actions">
-            <button className="primary" disabled={verifying} onClick={onVerify}>{verifying ? 'Проверяем…' : 'Проверить поведение'}</button>
-            <button onClick={onUndo}>Отменить</button>
-          </div>
-        </div>
+      {applied && applied.kind !== 'decompose' && (
+        <AppliedBanner applied={applied} onVerify={onVerify} onUndo={onUndo} onDismiss={onDismissApplied} verifying={verifying} />
       )}
       {!diagnostics && <div className="empty-state">Откройте проект — здесь появятся найденные проблемы</div>}
       {diagnostics && diagnostics.findings.length === 0 && <div className="empty-state">Проблем не найдено</div>}
       {diagnostics?.findings.map((f) => (
-        <FindingCard key={f.id} f={f} onSelect={onSelect} onFix={onFix} open={openId === f.id}
+        <FindingCard key={f.id} f={f} onSelect={onSelect} onFix={onFix} onAdvice={onAdvice} open={openId === f.id}
           onToggle={() => setOpenId((id) => (id === f.id ? null : f.id))} />
       ))}
     </div>
