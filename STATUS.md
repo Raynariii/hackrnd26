@@ -200,6 +200,8 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 - [x] `POST /advice` (запрос роли 2d, P2, PR — `feat/api-advice`): находка + код её метода (≤ 200 строк) →
       `ClaudeAdvisor`; без `ANTHROPIC_API_KEY` → 204, сбой советчика → 502 `llm_unavailable`. `ANTHROPIC_MODEL` в compose
 - [x] `docker compose up` с нуля + полный путь демо (см. «Журнал интеграций», 24.10 ~16:20)
+- [x] `POST /complexity` (запрос 2a, P1, PR — `feat/api-complexity`): `{version?, nodeIds}` → `{version, current}` —
+      Big O выделенных блоков блок-схемы через `MetricsCalculator.complexityOf`; 409 при устаревшей версии, 400 без id
 - [ ] SSE-консоль для `/run` (опц.)
 - [ ] корпус: 5–8 монолитов ~1000 строк, покрытие scope 1–4 (+ бонус)
 - [ ] `docs/`: архитектура, поддержанный scope, ограничения; README для жюри
@@ -218,7 +220,8 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 | Роль 4 | В `GET /diagnostics` у `collection-lookup-in-loop` стоит `fix.autoApplicable=true`, но `FixEngine.apply` отказывает (коллекция меняется в цикле — `00-hello`, `OrdersMonolith`). Кнопка «Применить» в UI обещает то, чего нет: выставлять `autoApplicable` по тем же проверкам, что и `apply`. | Роль 2 | Сделано — PR #29: `autoApplicable` = `Fixers.supports(model, finding)` (те же проверки, что и `apply`), текст отказа у 422 совпадает |
 | Роль 2 | `POST /api/projects/{id}/decompose`: `new Decomposer().propose(session.model())` → `DecomposeResult.proposal` (apply=false, v1); при apply=true пока 501 `not_implemented`. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
 | Роль 2 | (опц., P2) `POST /api/projects/{id}/advice` с `{findingId}`: `ClaudeAdvisor.fromEnvironment().advise(...)` по коду метода/фрагмента находки; без `ANTHROPIC_API_KEY` — `enabled=false` → 204; применение совета — только через quality gate (как `/fixes`). Заодно `ANTHROPIC_API_KEY=` в `.env.example` (опц.). Контракт — зона роли 4. | Роль 4 | Сделано — `feat/api-advice` |
-| Роль 2 | (опц., P1) `POST /api/projects/{id}/complexity` с `{version, nodeIds}`: `new MetricsCalculator().complexityOf(session.model(), nodeIds).toString()` → `{current}` для выделенных блоков блок-схемы (фронт уже умеет выделять блоки для `graph/ops`). Библиотечная часть готова (PR #37). Контракт — зона роли 4. | Роль 4 | Открыт (P1) |
+| Роль 2 | (опц., P1) `POST /api/projects/{id}/complexity` с `{version, nodeIds}`: `new MetricsCalculator().complexityOf(session.model(), nodeIds).toString()` → `{current}` для выделенных блоков блок-схемы (фронт уже умеет выделять блоки для `graph/ops`). Библиотечная часть готова (PR #37). Контракт — зона роли 4. | Роль 4 | Сделано — `feat/api-complexity` |
+| Роль 4 | **`MetricsCalculator.complexityOf`: оператор внутри циклов даёт O(1).** `estimate` учитывает глубину циклов-предков только для узлов-циклов и вызовов, поэтому `count++` (или `if`) во вложенном цикле → O(1), хотя по javadoc «блок внутри двух циклов исполняется O(n²) раз». Выделение внутреннего цикла даёт O(n²) верно. Пример — `ComplexityApiTest` (api). | Роль 2 (2a) | Открыт |
 
 ## Журнал интеграций
 | Когда | Результат | Что сломалось |
