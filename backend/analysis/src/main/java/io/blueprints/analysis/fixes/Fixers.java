@@ -20,7 +20,8 @@ public final class Fixers {
             new StringConcatFix(),
             new MagicNumberFix(),
             new LinkedListIndexFix(),
-            new NestedLoopIndexFix());
+            new NestedLoopIndexFix(),
+            new ExtractDuplicateFix());
 
     private Fixers() {
     }

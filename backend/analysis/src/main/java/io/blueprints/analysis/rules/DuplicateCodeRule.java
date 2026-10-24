@@ -142,7 +142,7 @@ public final class DuplicateCodeRule implements Rule {
                         + "вынесите фрагмент в общий метод.",
                 anchor.statements().get(0), nodes,
                 null,
-                new Fix("extract-method", "Выделить повторяющийся фрагмент в общий метод", null, false),
+                new Fix("extract-duplicate", "Вынести дубль в общий метод (автоматически)", null, false),
                 "Минус " + (group.size() - 1) + " копий: правка в одном месте вместо " + group.size());
     }
 
