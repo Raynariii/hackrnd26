@@ -177,13 +177,14 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 - [x] `POST /decompose` (запрос роли 2): `Decomposer.propose` → `proposal` + `notes`; `apply=true` → 501 (G7)
 - [ ] bench-входы `corpus/*/inputs/bench-*.txt` растущего размера (G4)
 - [ ] монолиты организаторов → `corpus/` (G8, как только лид их получит)
-- [ ] `docs/scope.md`: матрица «конструкция → граф / генерация / тест» по разделам 1–4 + бонус (G9)
+- [x] `docs/scope.md`: матрица «конструкция → граф / генерация / где проверено» по разделам 1–4 + бонус (G9, PR — `feat/docs-jury`)
 - [ ] фаззинг статических методов через генерируемую обвязку (G5, P2)
 - [ ] генерация JUnit golden-master + `GET /export` (zip)
 - [ ] бенчмарк n, 2n, 4n
 - [ ] SSE-консоль для `/run` (опц.)
 - [ ] корпус: 5–8 монолитов ~1000 строк, покрытие scope 1–4 (+ бонус)
-- [ ] `docs/`: архитектура, поддержанный scope, ограничения; README для жюри
+- [x] `docs/architecture.md` (модули, поток данных, verify/gate/экспорт, песочница, тесты, **ограничения**) и README для жюри:
+      запуск, сценарий демо на `06-demo-warehouse` (UI и curl — проверен буквально), таблица «что сдаём» (PR — `feat/docs-jury`)
 - [ ] проверить `docker compose up --build` с нуля
 **Для фронта (роль 3):** `POST /verify` работает по контракту `VerifyReport` (тело `{}` допустимо). Готовы: `cases[].name`
 («corpus/…/01.txt», «Вход №1», «Граничный: …», «Бенчмарк: n = …»), `mismatch` — текст для панели «Тесты»,
@@ -198,6 +199,7 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 | Роль 2 | `POST /api/projects/{id}/fixes/{findingId}`: вызвать `io.blueprints.analysis.FixEngine#apply(files, findingId)`, закоммитить новую версию и вернуть `ChangeResult` (state + diff); `FixNotApplicableException` → 409/422 с текстом причины. Контракт и контроллер — зона роли 4. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
 | Роль 4 | В `GET /diagnostics` у `collection-lookup-in-loop` стоит `fix.autoApplicable=true`, но `FixEngine.apply` отказывает (коллекция меняется в цикле — `00-hello`, `OrdersMonolith`). Кнопка «Применить» в UI обещает то, чего нет: выставлять `autoApplicable` по тем же проверкам, что и `apply`. | Роль 2 | Сделано — PR #29: `autoApplicable` = `Fixers.supports(model, finding)` (те же проверки, что и `apply`), текст отказа у 422 совпадает |
 | Роль 2 | `POST /api/projects/{id}/decompose`: `new Decomposer().propose(session.model())` → `DecomposeResult.proposal` (apply=false, v1); при apply=true пока 501 `not_implemented`. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
+| Роль 4 | Обзорный граф пропускает члены класса: `static`/instance-блоки инициализации (`InitializerDeclaration`), компактный конструктор record (`CompactConstructorDeclaration`), компоненты record, константы enum (с телами). Код сохраняется, но в графе их нет — в `docs/scope.md` отмечено 🟡. | Роль 1 | Открыт |
 
 ## Журнал интеграций
 | Когда | Результат | Что сломалось |
