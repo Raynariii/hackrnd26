@@ -1,20 +1,23 @@
 package io.blueprints.analysis;
 
+import io.blueprints.analysis.decompose.MonolithApplier;
 import io.blueprints.analysis.decompose.MonolithSplitter;
 import io.blueprints.core.model.ProjectModel;
+import io.blueprints.core.model.SourceFile;
 
 import java.util.List;
 
 /**
- * Декомпозиция монолита: предложение, как разложить god-class на {@code Parser / Analyzer / Optimizer / Main}.
+ * Декомпозиция монолита: предложение и применение разбиения god-class на
+ * {@code Parser / Analyzer / Optimizer / Main}.
  *
- * <p>Фасад для api: сам алгоритм классификации (имена + вызовы соседей, без LLM и без запуска кода)
- * живёт в {@code decompose/MonolithSplitter}. Предложение объяснимое: для каждого класса видно,
- * какие методы туда попали и почему.
+ * <p>Фасад для api: классификация (имена + вызовы соседей, без LLM и без запуска кода) —
+ * в {@code decompose/MonolithSplitter}, перенос кода — в {@code decompose/MonolithApplier}.
+ * Предложение объяснимое: для каждого класса видно, какие методы туда попали и почему.
  *
- * <p>v1, как зафиксировано в STATUS.md: предлагаем перенос, ничего не перемещая. Применение —
- * отдельный шаг после quality gate (роль 4), потому что перенос полей между файлами меняет
- * видимость и требует компиляции.
+ * <p>Применение (v1, G7) переносит только <b>static-методы</b> в новые классы: {@code main},
+ * конструкторы, поля и instance-методы остаются в исходном классе. Это механическая правка,
+ * которая не меняет поведение; компиляцию и дифф-тесты проверяет quality gate роли 4.
  */
 public final class Decomposer {
 
@@ -29,7 +32,12 @@ public final class Decomposer {
         }
     }
 
+    /** Результат применения: новые исходники, пояснения и описание изменения. */
+    public record Applied(List<SourceFile> files, List<String> notes, String description) {
+    }
+
     private final MonolithSplitter splitter = new MonolithSplitter();
+    private final MonolithApplier applier = new MonolithApplier();
 
     /** Предложение по всем god-классам проекта. */
     public Proposal propose(ProjectModel model) {
@@ -38,5 +46,16 @@ public final class Decomposer {
                 .map(group -> new ProposedClass(group.className(), group.responsibility(), group.members()))
                 .toList();
         return new Proposal(classes, split.notes());
+    }
+
+    /**
+     * Применяет декомпозицию к копии исходников: новые файлы классов + изменённый исходный файл.
+     * Ничего не запускает и не проверяет поведение — это делает quality gate (сборка + дифф-тесты).
+     *
+     * @throws FixNotApplicableException если декомпозировать нечего или результат не разбирается
+     */
+    public Applied apply(List<SourceFile> files) {
+        MonolithApplier.Applied applied = applier.apply(files);
+        return new Applied(applied.files(), applied.notes(), applied.description());
     }
 }
