@@ -12,6 +12,10 @@ import java.util.*;
  *   RESTOCK <sku> <qty>
  *   PROMO <код> <процент>
  *   APPLY <orderId> <код>
+ *   RETURN <orderId> <sku> <qty> <причина...>
+ *   REVIEW <customerId> <sku> <оценка 1..5> <текст...>
+ *   SUPPLIER <id> <срок поставки, дней> <название...>
+ *   SUPPLY <supplierId> <sku> <qty> <закупочная цена>
  *   REPORT
  */
 public class Main {
@@ -179,6 +183,10 @@ public class Main {
     static final Map<String, Double> promoCodes = new HashMap<>();
     static final List<String> errors = new ArrayList<>();
     static final LinkedList<String> auditLog = new LinkedList<>();
+    static final List<ReturnRecord> returns = new ArrayList<>();
+    static final List<Review> reviews = new ArrayList<>();
+    static final Map<String, Supplier> suppliers = new TreeMap<>();
+    static final List<Supply> supplies = new ArrayList<>();
     static int processedCommands;
     static int lineNo;
 
@@ -369,7 +377,9 @@ public class Main {
             case "REPORT":
                 return true;
             default:
-                throw new ShopException("неизвестная команда " + command, lineNo);
+                if (!processExtraCommand(command, parts)) {
+                    throw new ShopException("неизвестная команда " + command, lineNo);
+                }
         }
         return false;
     }
@@ -407,6 +417,12 @@ public class Main {
         printCitySummary();
         printAuditTail(5);
         printQuantities();
+        printReturns();
+        printRatings();
+        printLoyalty();
+        printAbcAnalysis();
+        printSupplies();
+        printStockForecast();
         checkInvariants();
     }
 
@@ -606,6 +622,417 @@ public class Main {
             System.out.println("  " + auditLog.get(i));
         }
         System.out.println("Всего событий в журнале: " + auditLog.size());
+    }
+
+
+    // ---------------------------------------------------------------- возвраты, отзывы, поставки
+
+    static class ReturnRecord {
+        final Order order;
+        final Product product;
+        final int quantity;
+        final String reason;
+        final double refund;
+
+        ReturnRecord(Order order, Product product, int quantity, String reason, double refund) {
+            this.order = order;
+            this.product = product;
+            this.quantity = quantity;
+            this.reason = reason;
+            this.refund = refund;
+        }
+    }
+
+    static class Review implements Comparable<Review> {
+        final Customer author;
+        final Product product;
+        final int stars;
+        final String text;
+        final boolean verifiedPurchase;
+
+        Review(Customer author, Product product, int stars, String text, boolean verifiedPurchase) {
+            this.author = author;
+            this.product = product;
+            this.stars = stars;
+            this.text = text;
+            this.verifiedPurchase = verifiedPurchase;
+        }
+
+        @Override
+        public int compareTo(Review other) {
+            if (stars != other.stars) {
+                return Integer.compare(other.stars, stars);
+            }
+            return author.id.compareTo(other.author.id);
+        }
+    }
+
+    static class Supplier extends Entity {
+        final String name;
+        final int leadDays;
+
+        Supplier(String id, String name, int leadDays) {
+            super(id);
+            this.name = name;
+            this.leadDays = leadDays;
+        }
+
+        @Override
+        public String describe() {
+            return name + " (" + id + ", поставка за " + leadDays + " дн.)";
+        }
+    }
+
+    static class Supply {
+        final Supplier supplier;
+        final Product product;
+        final int quantity;
+        final double unitCost;
+
+        Supply(Supplier supplier, Product product, int quantity, double unitCost) {
+            this.supplier = supplier;
+            this.product = product;
+            this.quantity = quantity;
+            this.unitCost = unitCost;
+        }
+    }
+
+    /** Уровень программы лояльности по сумме покупок. */
+    enum Tier {
+        BRONZE, SILVER, GOLD, PLATINUM
+    }
+
+    static class ReturnRejectedException extends ShopException {
+        ReturnRejectedException(String reason, int lineNumber) {
+            super("возврат отклонён: " + reason, lineNumber);
+        }
+    }
+
+    /** Дополнительные команды: возвраты, отзывы, поставщики, поставки. Возвращает false для неизвестной команды. */
+    static boolean processExtraCommand(String command, String[] parts) throws ShopException {
+        switch (command) {
+            case "RETURN" -> {
+                if (parts.length < 5) {
+                    throw new ShopException("RETURN: ожидается orderId, sku, количество и причина", lineNo);
+                }
+                Order order = findOrder(parts[1]);
+                if (order == null) {
+                    throw new UnknownEntityException("заказ", parts[1], lineNo);
+                }
+                if (order.cancelled) {
+                    throw new ReturnRejectedException("заказ " + order.id + " отменён", lineNo);
+                }
+                OrderLine line = null;
+                for (OrderLine l : order.lines) {
+                    if (l.product.id.equals(parts[2])) {
+                        line = l;
+                    }
+                }
+                if (line == null) {
+                    throw new ReturnRejectedException("в заказе " + order.id + " нет товара " + parts[2], lineNo);
+                }
+                int qty = Integer.parseInt(parts[3]);
+                int alreadyReturned = 0;
+                for (ReturnRecord r : returns) {
+                    if (r.order == order && r.product == line.product) {
+                        alreadyReturned += r.quantity;
+                    }
+                }
+                if (qty <= 0 || qty + alreadyReturned > line.quantity) {
+                    throw new ReturnRejectedException("можно вернуть не больше " + (line.quantity - alreadyReturned) + " шт.", lineNo);
+                }
+                String reason = String.join(" ", Arrays.copyOfRange(parts, 4, parts.length));
+                double refund = line.product.price * qty * (100.0 - order.discountPercent) / 100.0;
+                if (reason.toLowerCase().contains("передумал")) {
+                    refund = refund * 0.9; // заложенный дефект «magic-number»: удержание 10 % без имени
+                }
+                returns.add(new ReturnRecord(order, line.product, qty, reason, refund));
+                line.product.stock += qty;
+                line.product.sold -= qty;
+                order.customer.totalSpent -= refund;
+                audit("возврат " + order.id + " " + line.product.id + " ×" + qty);
+                return true;
+            }
+            case "REVIEW" -> {
+                if (parts.length < 5) {
+                    throw new ShopException("REVIEW: ожидается customerId, sku, оценка и текст", lineNo);
+                }
+                Customer author = customers.get(parts[1]);
+                if (author == null) {
+                    throw new UnknownEntityException("клиент", parts[1], lineNo);
+                }
+                Product product = products.get(parts[2]);
+                if (product == null) {
+                    throw new UnknownEntityException("товар", parts[2], lineNo);
+                }
+                int stars = Integer.parseInt(parts[3]);
+                if (stars < 1 || stars > 5) {
+                    throw new ShopException("оценка должна быть от 1 до 5, а не " + stars, lineNo);
+                }
+                boolean verified = false;
+                for (Order o : orders) {
+                    if (o.customer == author && !o.cancelled) {
+                        for (OrderLine l : o.lines) {
+                            if (l.product == product) {
+                                verified = true;
+                            }
+                        }
+                    }
+                }
+                String text = String.join(" ", Arrays.copyOfRange(parts, 4, parts.length));
+                reviews.add(new Review(author, product, stars, text, verified));
+                return true;
+            }
+            case "SUPPLIER" -> {
+                if (parts.length < 4) {
+                    throw new ShopException("SUPPLIER: ожидается id, срок и название", lineNo);
+                }
+                int lead = Integer.parseInt(parts[2]);
+                if (lead < 0) {
+                    throw new ShopException("срок поставки не может быть отрицательным", lineNo);
+                }
+                String name = String.join(" ", Arrays.copyOfRange(parts, 3, parts.length));
+                suppliers.put(parts[1], new Supplier(parts[1], name, lead));
+                return true;
+            }
+            case "SUPPLY" -> {
+                if (parts.length < 5) {
+                    throw new ShopException("SUPPLY: ожидается supplierId, sku, количество и цена", lineNo);
+                }
+                Supplier supplier = suppliers.get(parts[1]);
+                if (supplier == null) {
+                    throw new UnknownEntityException("поставщик", parts[1], lineNo);
+                }
+                Product product = products.get(parts[2]);
+                if (product == null) {
+                    throw new UnknownEntityException("товар", parts[2], lineNo);
+                }
+                int qty = Integer.parseInt(parts[3]);
+                double cost = Double.parseDouble(parts[4]);
+                if (qty <= 0 || cost < 0) {
+                    throw new ShopException("SUPPLY: количество и цена должны быть положительными", lineNo);
+                }
+                supplies.add(new Supply(supplier, product, qty, cost));
+                product.stock += qty;
+                audit("поставка " + product.id + " +" + qty + " от " + supplier.id);
+                return true;
+            }
+            default -> {
+                return false;
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------- отчёты по возвратам, отзывам, поставкам
+
+    static void printReturns() {
+        if (returns.isEmpty()) {
+            System.out.println("Возвраты: нет");
+            return;
+        }
+        double total = 0;
+        Map<String, Integer> byReason = new TreeMap<>();
+        // заложенный дефект «string-concat-in-loop»
+        String list = "";
+        for (ReturnRecord r : returns) {
+            total += r.refund;
+            byReason.merge(r.reason.toLowerCase(), r.quantity, Integer::sum);
+            list += r.order.id + "/" + r.product.id + "×" + r.quantity + " ";
+        }
+        System.out.printf("Возвраты: %d на %.2f [%s]%n", returns.size(), total, list.trim());
+        for (Map.Entry<String, Integer> e : byReason.entrySet()) {
+            System.out.println("  причина «" + e.getKey() + "»: " + e.getValue() + " шт.");
+        }
+    }
+
+    /**
+     * Рейтинг товаров по отзывам. Заложенный дефект: для каждого товара перебираются все отзывы — O(товары × отзывы)
+     * вместо одной группировки.
+     */
+    static void printRatings() {
+        System.out.println("Рейтинг товаров:");
+        boolean any = false;
+        for (Product p : products.values()) {
+            int count = 0;
+            int sum = 0;
+            int verified = 0;
+            for (Review r : reviews) {
+                if (r.product == p) {
+                    count++;
+                    sum += r.stars;
+                    if (r.verifiedPurchase) {
+                        verified++;
+                    }
+                }
+            }
+            if (count == 0) {
+                continue;
+            }
+            any = true;
+            double avg = (double) sum / count;
+            String stars = "★".repeat((int) Math.round(avg)) + "☆".repeat(5 - (int) Math.round(avg));
+            System.out.printf("  %-28s %s %.2f (%d отз., подтверждённых %d)%n", p.name, stars, avg, count, verified);
+        }
+        if (!any) {
+            System.out.println("  отзывов нет");
+            return;
+        }
+        List<Review> sorted = new ArrayList<>(reviews);
+        Collections.sort(sorted);
+        Review best = sorted.get(0);
+        Review worst = sorted.get(sorted.size() - 1);
+        System.out.println("  лучший отзыв: " + best.author.name + " о «" + best.product.name + "»: " + best.text);
+        System.out.println("  худший отзыв: " + worst.author.name + " о «" + worst.product.name + "»: " + worst.text);
+    }
+
+    static Tier tierOf(Customer c) {
+        // заложенный дефект «magic-number»: пороги уровней без имён
+        if (c.totalSpent >= 100000) {
+            return Tier.PLATINUM;
+        } else if (c.totalSpent >= 30000) {
+            return Tier.GOLD;
+        } else if (c.totalSpent >= 10000) {
+            return Tier.SILVER;
+        }
+        return Tier.BRONZE;
+    }
+
+    static void printLoyalty() {
+        Map<Tier, List<String>> byTier = new EnumMap<>(Tier.class);
+        for (Customer c : customers.values()) {
+            byTier.computeIfAbsent(tierOf(c), t -> new ArrayList<>()).add(c.name);
+        }
+        System.out.println("Лояльность:");
+        for (Tier t : Tier.values()) {
+            List<String> names = byTier.getOrDefault(t, Collections.emptyList());
+            String bonus;
+            switch (t) {
+                case PLATINUM:
+                    bonus = "кешбэк 7%";
+                    break;
+                case GOLD:
+                    bonus = "кешбэк 5%";
+                    break;
+                case SILVER:
+                    bonus = "кешбэк 3%";
+                    break;
+                default:
+                    bonus = "без кешбэка";
+            }
+            System.out.printf("  %-8s %-12s %s%n", t, bonus, names.isEmpty() ? "—" : String.join(", ", names));
+        }
+    }
+
+    /** ABC-анализ: A — товары, дающие 80 % выручки, B — следующие 15 %, C — остальные. */
+    static void printAbcAnalysis() {
+        Map<Product, Double> revenue = new HashMap<>();
+        for (Order o : orders) {
+            if (o.cancelled) {
+                continue;
+            }
+            for (OrderLine l : o.lines) {
+                revenue.merge(l.product, l.price() * (100.0 - o.discountPercent) / 100.0, Double::sum);
+            }
+        }
+        for (ReturnRecord r : returns) {
+            revenue.merge(r.product, -r.refund, Double::sum);
+        }
+        List<Map.Entry<Product, Double>> entries = new ArrayList<>(revenue.entrySet());
+        entries.sort((a, b) -> {
+            int byValue = Double.compare(b.getValue(), a.getValue());
+            return byValue != 0 ? byValue : a.getKey().id.compareTo(b.getKey().id);
+        });
+        double total = 0;
+        for (Map.Entry<Product, Double> e : entries) {
+            total += Math.max(0, e.getValue());
+        }
+        System.out.println("ABC-анализ:");
+        if (total <= 0) {
+            System.out.println("  нет продаж");
+            return;
+        }
+        double cumulative = 0;
+        StringBuilder a = new StringBuilder();
+        StringBuilder b = new StringBuilder();
+        StringBuilder c = new StringBuilder();
+        for (Map.Entry<Product, Double> e : entries) {
+            double share = cumulative / total;
+            StringBuilder target = share < 0.8 ? a : share < 0.95 ? b : c;
+            target.append(e.getKey().id).append(' ');
+            cumulative += Math.max(0, e.getValue());
+        }
+        System.out.println("  A: " + (a.length() == 0 ? "—" : a.toString().trim()));
+        System.out.println("  B: " + (b.length() == 0 ? "—" : b.toString().trim()));
+        System.out.println("  C: " + (c.length() == 0 ? "—" : c.toString().trim()));
+    }
+
+    static void printSupplies() {
+        if (supplies.isEmpty()) {
+            System.out.println("Поставки: нет");
+            return;
+        }
+        System.out.println("Поставки и маржа:");
+        for (Supplier s : suppliers.values()) {
+            int units = 0;
+            double cost = 0;
+            double potential = 0;
+            for (Supply sp : supplies) {
+                if (sp.supplier == s) {
+                    units += sp.quantity;
+                    cost += sp.quantity * sp.unitCost;
+                    potential += sp.quantity * sp.product.price;
+                }
+            }
+            if (units == 0) {
+                continue;
+            }
+            double margin = potential == 0 ? 0 : (potential - cost) / potential * 100;
+            System.out.printf("  %-30s %6d шт. закупка %12.2f, маржа %5.1f%%%n", s.describe(), units, cost, margin);
+        }
+    }
+
+    /**
+     * Прогноз запасов: сколько ещё заказов выдержит остаток при среднем размере заказа товара. Поставщик с самым
+     * коротким сроком предлагается для пополнения.
+     */
+    static void printStockForecast() {
+        System.out.println("Прогноз запасов:");
+        int shown = 0;
+        for (Product p : products.values()) {
+            int ordersWithProduct = 0;
+            int units = 0;
+            for (Order o : orders) {
+                if (o.cancelled) {
+                    continue;
+                }
+                for (OrderLine l : o.lines) {
+                    if (l.product == p) {
+                        ordersWithProduct++;
+                        units += l.quantity;
+                    }
+                }
+            }
+            if (ordersWithProduct == 0) {
+                continue;
+            }
+            double perOrder = (double) units / ordersWithProduct;
+            int ordersLeft = (int) Math.floor(p.stock / perOrder);
+            if (ordersLeft > 5) {
+                continue;
+            }
+            Supplier fastest = null;
+            for (Supply sp : supplies) {
+                if (sp.product == p && (fastest == null || sp.supplier.leadDays < fastest.leadDays)) {
+                    fastest = sp.supplier;
+                }
+            }
+            System.out.printf("  %-6s хватит примерно на %d заказ(ов)%s%n", p.id, ordersLeft,
+                    fastest == null ? ", поставщика нет" : ", заказать у " + fastest.name + " (" + fastest.leadDays + " дн.)");
+            shown++;
+        }
+        if (shown == 0) {
+            System.out.println("  запасов достаточно");
+        }
     }
 
     // ---------------------------------------------------------------- вспомогательное (дублирование)

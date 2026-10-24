@@ -39,6 +39,12 @@ def shop_orders(n):
             lines.append(f"APPLY o{rnd.randrange(i)} BENCH")
         if i % 40 == 39:
             lines.append(f"CANCEL o{i - 1}")
+        if i % 30 == 29:
+            lines.append(f"REVIEW c{rnd.randrange(customers)} p{rnd.randrange(40)} {rnd.randint(1, 5)} отзыв {i}")
+    for k in range(3):
+        lines.append(f"SUPPLIER s{k} {3 + 5 * k} Поставщик {k}")
+    for i in range(n // 50):
+        lines.append(f"SUPPLY s{rnd.randrange(3)} p{rnd.randrange(40)} {rnd.randint(10, 100)} {rnd.randint(50, 5000)}")
     lines.append("REPORT")
     return lines
 
@@ -75,6 +81,8 @@ def bank(size):
     for i in range(n):
         lines.append(f"OPEN a{i} {rnd.choice(['RUB', 'RUB', 'USD', 'EUR'])} {rnd.choice(owners)}")
         lines.append(f"DEPOSIT a{i} {rnd.randint(1000, 900000)}")
+    for i in range(3):
+        lines.append(f"AUTOPAY a{i} a{i + 1} {rnd.randint(100, 2000)}")
     for i in range(size):
         a, b = rnd.randrange(n), rnd.randrange(n)
         op = rnd.random()
@@ -86,8 +94,13 @@ def bank(size):
             lines.append(f"WITHDRAW a{a} {rnd.randint(1, 3000)}")
         if i % 200 == 199:
             lines.append(f"STATEMENT a{a}")
+    for m in range(2, 13):
+        lines.append(f"MONTH {m}")
+        lines.append(f"RATE USD {90 + rnd.randint(0, 1500) / 100}")
     lines.append("INTEREST 7.5 12")
     lines.append("HISTOGRAM")
+    lines.append("MONTHS")
+    lines.append("RATES")
     return lines
 
 
