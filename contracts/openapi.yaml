@@ -151,7 +151,11 @@ paths:
     post:
       tags: [analysis]
       summary: Предложить (apply=false) или применить (apply=true) разбиение монолита
-      description: 'v1: только предложение; apply=true отвечает 501 not_implemented (LEAD.md G7).'
+      description: |
+        apply=false — только предложение. apply=true (G7 v1) — `Decomposer.apply`: static-методы и поля переносятся в новые
+        классы на копии, затем quality gate (компиляция + дифф-тесты против текущей версии) и новая версия; `result` —
+        ChangeResult. 422: `decompose_not_applicable` (нечего разбивать), `quality_gate_failed` (сессия не меняется);
+        409 — устаревшая версия.
       requestBody:
         required: true
         content:
@@ -163,8 +167,33 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DecomposeResult' }
-        '501':
-          description: apply=true пока не реализовано
+        '409': { $ref: '#/components/responses/VersionConflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /projects/{projectId}/advice:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    post:
+      tags: [analysis]
+      summary: Совет LLM по находке (опционально)
+      description: |
+        Советчику (Claude, роль 2d) уходят находка и код её метода (не больше 200 строк). Ответ — только текст:
+        применить совет можно правкой кода, и она, как любая правка, проверяется /verify. Без `ANTHROPIC_API_KEY`
+        советчик выключен → 204.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdviceRequest' }
+      responses:
+        '200':
+          description: Совет
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Advice' }
+        '204': { description: Советчик выключен (нет ключа) }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '502':
+          description: Советчик не ответил (error = llm_unavailable)
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
@@ -184,6 +213,28 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RunResult' }
+
+  /projects/{projectId}/run/stream:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    post:
+      tags: [execution]
+      summary: Запуск с потоковой консолью (Server-Sent Events)
+      description: |
+        Тот же запуск, что POST /run, но вывод приходит по мере появления. События (`event:` + JSON в `data:`):
+        `compile` — CompileResult (если ok=false, поток на этом заканчивается); `stdout` / `stderr` — `{text}`, кусок
+        вывода; `exit` — `{exitCode, timeMs, timedOut}`; `error` — `{message}` (некорректный запрос или песочница
+        недоступна). stdin запоминается для verify так же, как у /run.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RunProjectRequest' }
+      responses:
+        '200':
+          description: Поток событий
+          content:
+            text/event-stream:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /projects/{projectId}/verify:
     parameters: [{ $ref: '#/components/parameters/ProjectId' }]
@@ -251,6 +302,24 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/RunResult' }
+
+  /internal/run-stream:
+    servers:
+      - url: http://runner:8090
+    post:
+      tags: [runner-internal]
+      summary: Компиляция и потоковый запуск (SSE) — события те же, что у /projects/{id}/run/stream
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RunnerRequest' }
+      responses:
+        '200':
+          description: Поток событий
+          content:
+            text/event-stream:
+              schema: { type: string }
 
   /internal/run-batch:
     servers:
@@ -480,6 +549,20 @@ components:
           items: { type: string }
           description: 'Пояснения: какой класс разбит и на сколько частей, что не удалось распределить'
         result: { oneOf: [{ $ref: '#/components/schemas/ChangeResult' }, { type: 'null' }] }
+
+    AdviceRequest:
+      type: object
+      required: [findingId]
+      properties:
+        findingId: { type: string }
+
+    Advice:
+      type: object
+      required: [findingId, suggestion]
+      properties:
+        findingId: { type: string }
+        suggestion: { type: string, description: 'Объяснение и исправленный фрагмент (markdown)' }
+        model: { type: [string, 'null'] }
 
     RunProjectRequest:
       type: object

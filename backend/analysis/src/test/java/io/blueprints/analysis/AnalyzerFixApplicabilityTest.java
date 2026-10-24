@@ -140,6 +140,6 @@ class AnalyzerFixApplicabilityTest {
         assertThat(Analyzer.defaultRules()).extracting(Rule::id)
                 .containsExactlyElementsOf(Rules.defaultRules().stream().map(Rule::id).toList());
         assertThat(Fixers.all()).extracting(Fixer::kind)
-                .containsExactlyInAnyOrder("index-by-key", "string-builder", "extract-constant", "iterator", "nested-loop-index");
+                .containsExactlyInAnyOrder("index-by-key", "string-builder", "extract-constant", "iterator", "nested-loop-index", "extract-duplicate");
     }
 }

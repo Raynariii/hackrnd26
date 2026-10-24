@@ -1,0 +1,3 @@
+#mode short
+The quick brown fox jumps over the lazy dog. A man, a plan, a canal: Panama!
+Was it a car or a cat I saw? Level, radar, civic and kayak are palindromes.

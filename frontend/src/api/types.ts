@@ -110,6 +110,13 @@ export interface RunResult {
   timedOut: boolean;
 }
 
+/** POST /projects/{id}/run/stream — события text/event-stream (поле data — JSON) */
+export type RunStreamEvent =
+  | { event: 'compile'; data: { ok: boolean; problems?: Problem[]; output?: string } }
+  | { event: 'stdout' | 'stderr'; data: { text: string } }
+  | { event: 'exit'; data: { exitCode: number | null; timeMs: number; timedOut: boolean } }
+  | { event: 'error'; data: { message: string } };
+
 export interface VerifyCase {
   name: string;
   input?: string;
@@ -170,4 +177,11 @@ export interface DecomposeResult {
   proposal: { className: string; responsibility?: string; members: string[] }[];
   notes?: string[];
   result?: ChangeResult | null;
+}
+
+/** POST /projects/{id}/advice — contracts/openapi.yaml → Advice (204 — советчик выключен) */
+export interface Advice {
+  findingId: string;
+  suggestion: string;
+  model?: string | null;
 }

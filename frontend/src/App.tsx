@@ -1,20 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Boxes, ChevronRight, CircleAlert, CircleCheck, CircleX, Download, DraftingCompass, FileCode2, FlaskConical, FolderOpen, Gauge, LayoutGrid, Moon, Play, ShieldCheck, Sun, Terminal, Upload, Workflow, X } from 'lucide-react';
-import { api, ApiRequestError } from './api/client';
+import { Box, Boxes, ChevronRight, CircleAlert, CircleCheck, CircleX, Download, DraftingCompass, FileCode2, FlaskConical, FolderOpen, Gauge, LayoutGrid, Moon, Play, ShieldCheck, SquareFunction, Sun, Terminal, TriangleAlert, Upload, Workflow, X } from 'lucide-react';
+import { api, ApiRequestError, isUnsupported } from './api/client';
+import { applyRunEvent, STREAM_START } from './flow/run';
 import type { DecomposeResult, Diagnostics, Finding, Graph, GraphNode, GraphOpRequest, ProjectState, RunResult, SourceFile, SourceRange, VerifyReport } from './api/types';
-import { AnalysisPanel, MetricsPanel, type AppliedFix } from './components/AnalysisPanel';
+import { AnalysisPanel, MetricsPanel, type AdviceReply, type AppliedFix } from './components/AnalysisPanel';
 import { DecomposePanel } from './components/DecomposePanel';
 import { exportSummary } from './api/download';
 import { BottomPanel, type BottomTab } from './components/BottomPanel';
 import { CodeEditor } from './components/CodeEditor';
 import { GraphCanvas } from './components/GraphCanvas';
 import { NodeInspector } from './components/NodeInspector';
+import { Explorer } from './components/Explorer';
 import { VerifyScreen } from './components/VerifyScreen';
 import { changedLineNumbers, findMethodAgain, firstChangedLine } from './flow/edit';
 import { findingsByNode, nodeAtLine, nodeForFinding } from './flow/sourceMap';
 
 type Theme = 'light' | 'dark';
 type RightTab = 'problems' | 'metrics' | 'decompose';
+/** Раскладка центра: граф и код, только граф (для показа) или только код. */
+type ViewMode = 'split' | 'graph' | 'code';
 interface Panels { left: boolean; right: boolean; bottom: boolean }
 
 /** Настройки вида живут в localStorage браузера; недоступен (приватный режим) — работаем с умолчаниями. */
@@ -86,12 +90,23 @@ export function App() {
   const [applied, setApplied] = useState<AppliedFix | null>(null);
   const [beforeFix, setBeforeFix] = useState<SourceFile[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Эндпоинты из PR роли 4, которых может не быть на сервере (#40 advice, #42 complexity, #55 decompose apply,
+   * #56 run/stream): первый ответ «нет такого» прячет функцию до перезагрузки, остальное работает как раньше.
+   */
+  const [unsupported, setUnsupported] = useState<Set<'advice' | 'complexity' | 'decomposeApply' | 'runStream'>>(new Set());
+  const markUnsupported = useCallback((f: 'advice' | 'complexity' | 'decomposeApply' | 'runStream') =>
+    setUnsupported((s) => (s.has(f) ? s : new Set(s).add(f))), []);
+  /** Big O выделенных блоков блок-схемы (POST /complexity); key — выделение и версия, к которым относится ответ. */
+  const [selComplexity, setSelComplexity] = useState<{ key: string; value: string | null } | null>(null);
+  const [applyingDecomp, setApplyingDecomp] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => stored<Theme>('jb.theme', 'dark'));
   const [panels, setPanels] = useState<Panels>(() => stored<Panels>('jb.panels', { left: true, right: true, bottom: false }));
   const [rightTab, setRightTab] = useState<RightTab>('problems');
   const [bottomTab, setBottomTab] = useState<BottomTab>('console');
   /** Доля высоты холста в центральной колонке (остальное — редактор); граница перетаскивается. */
   const [split, setSplit] = useState(() => stored<number>('jb.split', 0.6));
+  const [view, setView] = useState<ViewMode>(() => stored<ViewMode>('jb.view', 'split'));
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const centerRef = useRef<HTMLDivElement>(null);
@@ -116,6 +131,7 @@ export function App() {
   }, [theme]);
   useEffect(() => store('jb.panels', panels), [panels]);
   useEffect(() => store('jb.split', split), [split]);
+  useEffect(() => store('jb.view', view), [view]);
 
   const togglePanel = (key: keyof Panels, force?: boolean) => setPanels((p) => ({ ...p, [key]: force ?? !p[key] }));
   /** Кнопка полосы: открыть панель на нужной вкладке; повторное нажатие на активную — спрятать. */
@@ -220,6 +236,7 @@ export function App() {
       await refreshAfterChange(project, await api.updateSource(project.id, project.version, files), true);
     });
 
+  /** Запуск: вывод идёт в консоль по мере появления (SSE); сервер без стрима — обычный run целиком. */
   const runProgram = () =>
     guard(async () => {
       if (!project) return;
@@ -227,7 +244,17 @@ export function App() {
       setBottomTab('console');
       togglePanel('bottom', true);
       try {
-        setRun(await api.run(project.id, stdin));
+        let streamed = false;
+        if (!unsupported.has('runStream')) {
+          let acc = STREAM_START;
+          setRun(acc);
+          streamed = await api.runStream(project.id, stdin, (e) => {
+            acc = applyRunEvent(acc, e);
+            setRun(acc);
+          });
+          if (!streamed) markUnsupported('runStream');
+        }
+        if (!streamed) setRun(await api.run(project.id, stdin));
       } finally {
         setRunning(false);
       }
@@ -313,6 +340,63 @@ export function App() {
       }
     });
 
+  /**
+   * «Применить разбиение»: сервер переносит static-методы и поля в новые классы на копии, прогоняет quality gate
+   * (компиляция + дифф-тесты против текущей версии) и только при зелёном коммитит новую версию. Дальше — как
+   * после авто-исправления: дифф, отчёт gate, «Отменить» и полная проверка против версии 1.
+   */
+  const applyDecomposition = async (): Promise<string | null> => {
+    if (!project) return 'Нет проекта';
+    setApplyingDecomp(true);
+    try {
+      const prev = project;
+      const res = await api.applyDecomposition(project.id, project.version);
+      const change = res.result;
+      if (!change) return 'Сервер не вернул новую версию — разбиение не применено';
+      await refreshAfterChange(prev, change.state, false);
+      const added = change.state.files.filter((f) => !prev.files.some((p) => p.path === f.path)).map((f) => f.path);
+      setApplied({
+        kind: 'decompose',
+        title: added.length ? `Новые классы: ${added.map((f) => f.replace(/\.java$/, '')).join(', ')}` : 'Монолит разбит на классы',
+        description: change.description ?? (res.notes ?? []).join(' '),
+        diff: change.diff,
+        gate: change.verify ?? null,
+      });
+      setBeforeFix(prev.files);
+      setDecomp(null);
+      setActiveClass(null);
+      void runVerify();
+      return null;
+    } catch (e) {
+      if (isUnsupported(e)) {
+        markUnsupported('decomposeApply');
+        return null;
+      }
+      if (e instanceof ApiRequestError) return e.status === 409 ? 'Код изменился — пересчитайте разбиение' : e.message;
+      return String(e);
+    } finally {
+      setApplyingDecomp(false);
+    }
+  };
+
+  /** Совет LLM по находке (POST /advice): только текст, применяется обычной правкой кода и проверяется /verify. */
+  const askAdvice = async (finding: Finding): Promise<AdviceReply> => {
+    if (!project) return { error: 'Нет проекта' };
+    try {
+      const advice = await api.advice(project.id, finding.id);
+      return advice ? { text: advice.suggestion, model: advice.model ?? null } : { off: true };
+    } catch (e) {
+      if (isUnsupported(e)) {
+        markUnsupported('advice');
+        return { off: true };
+      }
+      if (e instanceof ApiRequestError) {
+        return { error: e.status === 404 ? 'Находка устарела — диагностика перечитана' : e.status === 502 ? 'Советчик не ответил, попробуйте ещё раз' : e.message };
+      }
+      return { error: String(e) };
+    }
+  };
+
   /** Класс из предложения → его члены выделены на обзоре (открываем обзор, если сейчас блок-схема метода). */
   const showProposedClass = (className: string, nodes: GraphNode[]) => {
     if (!overview || nodes.length === 0) return;
@@ -353,6 +437,21 @@ export function App() {
   const openedMethod = graph?.level === 'method' ? overview?.nodes.find((n) => n.id === graph.scope) ?? null : null;
   const ownerType = openedMethod?.parent ? overview?.nodes.find((n) => n.id === openedMethod.parent) ?? null : null;
 
+  /** Проводник → член класса: показать на обзоре, выделить и подсветить код. */
+  const selectMember = (node: GraphNode) => {
+    if (overview && graph !== overview) showGraph(overview);
+    if (node.range && node.range.file !== activeFile) {
+      const file = project?.files.find((f) => f.path === node.range!.file);
+      if (file) {
+        setActiveFile(file.path);
+        setDraft(file.content);
+      }
+    }
+    setSelected(node);
+    setHighlight(node.range ?? null);
+    focusNode(node);
+  };
+
   const focusNode = (node: GraphNode) => setFocus((f) => ({ id: node.id, seq: (f?.seq ?? 0) + 1 }));
 
   const selectFinding = (finding: Finding) => {
@@ -380,6 +479,24 @@ export function App() {
   };
 
   const dirty = !!project && draft !== savedContent;
+
+  // Big O выделенных блоков блок-схемы: спрашиваем сервер при каждой смене выделения (только чтение, быстро).
+  const complexityKey = graph?.level === 'method' && project && selection.length
+    ? `${project.version}|${selection.map((n) => n.id).sort().join(',')}` : null;
+  useEffect(() => {
+    if (!complexityKey || !project || unsupported.has('complexity')) return;
+    let alive = true;
+    api.complexity(project.id, project.version, selection.map((n) => n.id))
+      .then((r) => alive && setSelComplexity({ key: complexityKey, value: r.current }))
+      .catch((e) => {
+        if (isUnsupported(e)) markUnsupported('complexity');
+        else if (alive) setSelComplexity({ key: complexityKey, value: null });
+      });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ключ уже содержит версию и выделение
+  }, [complexityKey, unsupported]);
+  const complexity = !complexityKey || unsupported.has('complexity') ? undefined
+    : selComplexity?.key === complexityKey ? selComplexity.value : 'pending';
   const findingsCount = diagnostics?.findings.length ?? 0;
 
   // Горячие клавиши как в IDE: Shift+F10 — запуск, Esc — закрыть отчёт проверки.
@@ -442,14 +559,22 @@ export function App() {
         onChange={(e) => { importFiles(e.target.files); e.target.value = ''; }} />
 
       <header className="toolbar">
-        <div className="app-logo" aria-hidden><DraftingCompass size={17} /></div>
+        <div className="app-logo" aria-hidden><DraftingCompass size={18} /></div>
+        <span className="brand-name">Java Blueprints</span>
         <div className="project-widget">
-          <span className="project-name" title={project?.name ?? undefined}>{project ? project.name ?? activeFile : 'Java Blueprints'}</span>
+          <FileCode2 size={15} className="icon-java" />
+          <span className="project-name" title={project?.name ?? undefined}>{project ? project.name ?? activeFile : 'Нет проекта'}</span>
           {project && <span className="muted" title="Версия проекта: каждая правка — новая версия, v1 — эталон поведения">v{project.version}</span>}
         </div>
         <button onClick={() => fileInput.current?.click()} title="Открыть .java-файлы (можно перетащить в окно)">
           <FolderOpen size={16} />Открыть
         </button>
+        <div className="toolbar-spacer" />
+        <div className="segmented" role="group" aria-label="Раскладка">
+          <button aria-pressed={view === 'graph'} onClick={() => setView('graph')} disabled={!project} title="Только граф — для показа">Граф</button>
+          <button aria-pressed={view === 'split'} onClick={() => setView('split')} disabled={!project} title="Граф и код">Граф + код</button>
+          <button aria-pressed={view === 'code'} onClick={() => setView('code')} disabled={!project} title="Только код">Код</button>
+        </div>
         <div className="toolbar-spacer" />
         <div className="run-widget">
           <button disabled={!project || running} onClick={runProgram} title="Запустить программу (Shift+F10)">
@@ -464,7 +589,6 @@ export function App() {
           title="Zip: текущий код, JUnit-тесты против версии 1 (golden master) и отчёт проверки; запуск — mvn test">
           <Download size={16} />{exporting ? 'Готовим архив…' : 'Экспорт с тестами'}
         </button>
-        <div className="toolbar-sep" />
         <button className="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           title={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'} aria-label="Сменить тему">
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
@@ -481,28 +605,33 @@ export function App() {
 
         {panels.left && (
           <aside className="island sidebar" style={{ gridArea: 'left' }}>
-            <div className="island-head"><span className="island-title">Проект</span></div>
-            <div className="island-body pad">
+            <div className="island-head"><span className="island-title">Проводник</span></div>
+            <div className="island-body pad explorer-body">
               {!project && <div className="muted">Нет открытых файлов</div>}
-              {project?.files.map((f) => (
-                <div key={f.path} className={`file ${f.path === activeFile ? 'active' : ''}`}
-                     onClick={() => { setActiveFile(f.path); setDraft(f.content); }}>
-                  <FileCode2 size={15} />{f.path}
-                </div>
-              ))}
-              {selected && graph && (
-                <div className="section">
-                  <NodeInspector selection={selection} graph={graph} onOp={applyGraphOp} />
-                </div>
+              {project && (
+                <Explorer
+                  files={project.files}
+                  activeFile={activeFile}
+                  onOpenFile={(path) => { const f = project.files.find((x) => x.path === path); if (f) { setActiveFile(f.path); setDraft(f.content); } }}
+                  overview={overview}
+                  findings={diagnostics?.findings ?? []}
+                  selectedId={selected?.id ?? null}
+                  onSelectMember={selectMember}
+                  onOpenMethod={openMethod}
+                />
               )}
-              {graph?.level === 'method' && <div className="hint">Shift/Ctrl+клик — выделить несколько блоков подряд</div>}
-              {graph?.level === 'overview' && !selected && <div className="hint">Клик по методу — выделить, двойной клик — открыть блок-схему</div>}
             </div>
+            {selected && graph && (
+              <div className="inspector-dock">
+                <NodeInspector selection={selection} graph={graph} onOp={applyGraphOp} complexity={complexity} />
+                {graph.level === 'method' && <div className="hint">Shift/Ctrl+клик — выделить несколько блоков подряд</div>}
+              </div>
+            )}
           </aside>
         )}
 
         <div className="center" ref={centerRef} style={{ gridArea: 'center' }}>
-          <main className="island" style={{ flex: project ? `${split} 1 0` : '1 1 0' }}>
+          <main className="island" style={{ flex: !project || view === 'graph' ? '1 1 0' : `${split} 1 0` }} hidden={!!project && view === 'code'}>
             <div className="island-head">
               <div className="tabs" role="tablist">
                 <button role="tab" className={graph?.level !== 'method' ? 'active' : ''} aria-selected={graph?.level !== 'method'}
@@ -517,11 +646,18 @@ export function App() {
                   </button>
                 )}
               </div>
-              {graph && (
-                <span className="head-hint">
-                  {graph.level === 'method' ? 'Блок-схема метода: клик по блоку — код и правка слева' : 'Классы и их члены; двойной клик по методу — блок-схема'}
-                </span>
-              )}
+              {overview && diagnostics && (
+          <div className="chips head-chips" aria-label="Сводка проекта">
+            <span className="chip-metric" title="Типы: классы, интерфейсы, enum, record"><Box size={13} />Типы <b>{overview.nodes.filter((n) => ['class', 'interface', 'enum', 'record'].includes(n.kind)).length}</b></span>
+            <span className="chip-metric" title="Методы и конструкторы"><SquareFunction size={13} />Методы <b>{overview.nodes.filter((n) => n.kind === 'method' || n.kind === 'constructor').length}</b></span>
+            <span className={`chip-metric ${diagnostics.findings.some((f) => f.severity === 'high') ? 'err' : ''}`} title="Проблем высокой важности">
+              <CircleAlert size={13} />Критичных <b>{diagnostics.findings.filter((f) => f.severity === 'high').length}</b>
+            </span>
+            <span className={`chip-metric ${diagnostics.metrics.some((m) => /n\^?[2-9²³]/.test(m.complexity ?? '')) ? 'warn' : ''}`} title="Методы со сложностью выше линейной">
+              <TriangleAlert size={13} />Выше O(n) <b>{diagnostics.metrics.filter((m) => /n\^?[2-9²³]|2\^n|n!/.test(m.complexity ?? '')).length}</b>
+            </span>
+          </div>
+        )}
             </div>
             <div className="canvas">
               {graph ? (
@@ -554,8 +690,8 @@ export function App() {
             </div>
           </main>
           {/* Без проекта редактор пуст — приветствие занимает всю колонку. */}
-          <div className="splitter" role="separator" aria-orientation="horizontal" aria-label="Граница графа и кода" onPointerDown={startSplit} hidden={!project} />
-          <section className="island" style={{ flex: `${1 - split} 1 0` }} hidden={!project}>
+          <div className="splitter" role="separator" aria-orientation="horizontal" aria-label="Граница графа и кода" onPointerDown={startSplit} hidden={!project || view !== 'split'} />
+          <section className="island" style={{ flex: view === 'code' ? '1 1 0' : `${1 - split} 1 0` }} hidden={!project || view === 'graph'}>
             <div className="island-head">
               {activeFile ? (
                 <span className="editor-tab" title={activeFile}>
@@ -598,6 +734,7 @@ export function App() {
                   onUndo={undoFix}
                   onDismissApplied={() => setApplied(null)}
                   verifying={verifying}
+                  onAdvice={unsupported.has('advice') ? undefined : askAdvice}
                 />
               )}
               {rightTab === 'metrics' && <MetricsPanel diagnostics={diagnostics} />}
@@ -611,6 +748,13 @@ export function App() {
                   onPropose={proposeDecomposition}
                   onShowClass={(cls, nodes) => showProposedClass(cls.className, nodes)}
                   onShowMember={showMember}
+                  onApply={unsupported.has('decomposeApply') ? undefined : applyDecomposition}
+                  applying={applyingDecomp}
+                  applied={applied?.kind === 'decompose' ? applied : null}
+                  onVerify={runVerify}
+                  onUndo={undoFix}
+                  onDismissApplied={() => setApplied(null)}
+                  verifying={verifying}
                 />
               ) : <div className="empty-state">Откройте проект, чтобы предложить разбиение</div>)}
             </div>

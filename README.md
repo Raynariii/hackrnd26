@@ -1,53 +1,97 @@
 # Java Blueprints — визуальная среда программирования
 
 Веб-инструмент, который разбирает Java-монолит в граф, позволяет исследовать и править программу как код и как
-блок-схему, находит дефекты и оценивает сложность (Big O), улучшает код и **автоматически проверяет, что поведение
-программы сохранилось**.
+блок-схему (синхронно в обе стороны), находит дефекты и оценивает сложность (Big O), улучшает код и
+**автоматическими тестами доказывает, что поведение программы сохранилось**.
 
-Кейс Axenix, хакатон 2026.
+Кейс Axenix, хакатон РнД, осень 2026.
 
 ## Быстрый запуск (Docker)
 
-Нужен Docker с Compose v2.
+Нужен Docker с Compose v2. Интернет нужен только для сборки образов.
 
 ```bash
+git clone https://github.com/Raynariii/hackrnd26.git && cd hackrnd26
 cp .env.example .env
 docker compose up --build
 ```
 
-Откройте http://localhost:3000 → «Импорт Java» → выберите, например, `corpus/00-hello/Main.java`.
+Откройте http://localhost:3000 → «Импорт Java» → `corpus/06-demo-warehouse/Main.java`.
 
 | Сервис | Порт | Назначение |
 |---|---|---|
 | web | 3000 | интерфейс (nginx), проксирует `/api` |
 | api | 8080 | REST API (`contracts/openapi.yaml`) |
-| runner | — | песочница компиляции и запуска, доступна только из `api`, без выхода в сеть |
+| runner | — | песочница компиляции и запуска: доступна только из `api`, без сети, read-only FS, лимиты |
+
+## Сценарий демо (≈ 5 минут)
+
+Пример — `corpus/06-demo-warehouse` (склад, ~200 строк, три горячих участка O(n²)).
+
+1. **Загрузить.** «Импорт Java» → обзорный граф: класс, методы, поля, рёбра вызовов.
+2. **Исследовать.** Клик по методу `reconcile` → блок-схема (условия Да/Нет, циклы, вызовы). Клик по блоку →
+   подсветка строк в редакторе, и наоборот.
+3. **Диагноз.** Панель «Проблемы»: `contains` в цикле, конкатенация строк в цикле, `LinkedList.get(i)` в цикле —
+   у каждой находки строка, узел графа, объяснение, сложность O(n²) → O(n) и вариант исправления.
+4. **Улучшить.** «Применить» по каждой находке → исправление проходит quality gate (компиляция + дифф-тесты
+   против предыдущей версии) → код и граф обновились, Big O метода стал O(n).
+5. **Править на графе.** Изменить условие или вставить блок → код синхронизировался.
+6. **Запустить.** «▶ Запуск» со своим stdin → консоль.
+7. **Проверить.** «Проверить» → версия 1 против текущей: сборка ✓, N/N случаев ✓, «Поведение совпадает»,
+   время до/после на bench-входах (n = 5000 / 10000 / 20000: ускорение ×1,5 / ×2,3 / ×6,5).
+8. **Экспорт.** zip с текущей версией и golden-master тестами JUnit → `mvn test`.
+
+То же через API (без UI):
+
+```bash
+API=http://localhost:8080/api
+ID=$(jq -n --rawfile c corpus/06-demo-warehouse/Main.java '{name:"warehouse",files:[{path:"Main.java",content:$c}]}' \
+     | curl -s -H 'Content-Type: application/json' -d @- $API/projects | jq -r .id)
+curl -s $API/projects/$ID/diagnostics | jq '.findings[] | {rule, startLine, complexity}'
+F=$(curl -s $API/projects/$ID/diagnostics | jq -r '[.findings[] | select(.rule=="collection-lookup-in-loop")][0].id')
+curl -s -H 'Content-Type: application/json' -d '{"version":1}' $API/projects/$ID/fixes/$F | jq '{version: .state.version, gate: .verify.passed}'
+curl -s -H 'Content-Type: application/json' -d '{"benchmark":true}' $API/projects/$ID/verify | jq '{behaviorPreserved, passed, total, benchmark}'
+curl -s -o warehouse.zip $API/projects/$ID/export && unzip -q warehouse.zip && (cd warehouse-v2 && mvn -q test)
+```
+
+## Что сдаём (по требованиям кейса)
+
+| Требование | Где |
+|---|---|
+| Исходный код с инструкцией запуска | этот репозиторий, разделы выше |
+| Веб-демо / воспроизводимая сборка | `docker compose up --build` → http://localhost:3000 |
+| Автотесты и результат их запуска | `cd backend && mvn -B verify` (JUnit 5, все модули; отчёты в `*/target/surefire-reports`), CI в GitHub Actions; golden-master тесты любого проекта — `GET /api/projects/{id}/export` → `mvn test` |
+| Описание: архитектура, поддержанный scope, ограничения | [docs/architecture.md](docs/architecture.md), [docs/scope.md](docs/scope.md) |
+| Тестовые монолиты | [corpus/](corpus/README.md): 6 монолитов (scope 1–4 + бонус) с заложенными дефектами, входами и bench-входами |
 
 ## Запуск для разработки
 
 Требуется Java 21+, Maven 3.9+, Node 22+.
 
 ```bash
-cd backend && mvn -B verify                         # сборка и тесты
+cd backend && mvn -B verify                         # сборка и все тесты
 cd backend && mvn -B -pl runner -am spring-boot:run # песочница :8090
-cd backend && mvn -B -pl api -am spring-boot:run    # API :8080
-cd frontend && npm ci && npm run dev                # UI :5173
+cd backend && mvn -B -pl api -am spring-boot:run    # API :8080 (корпус берётся из ../../corpus)
+cd frontend && npm ci && npm run dev                # UI :5173, проксирует /api на :8080
 ```
 
-Фронт без бэкенда: `cd frontend && npm run dev:mock`.
+Фронт без бэкенда: `cd frontend && npm run dev:mock`. Проверка корпуса вручную: `corpus/check.sh`.
+
+> Вне Docker `runner` запускает `javac`/`java` прямо на машине, без изоляции контейнера. Для чужого кода
+> используйте `docker compose`.
 
 ## Структура
 
 ```
 contracts/   graph.schema.json, openapi.yaml — контракты между модулями
 backend/
-  core/      Java ↔ граф: парсинг, построение графа, операции над AST, генерация кода
-  analysis/  правила дефектов, Big O, авто-исправления, декомпозиция
-  runner/    песочница: javac + java в изолированном контейнере
-  api/       REST API (Spring Boot)
-frontend/    React + React Flow + Monaco
-corpus/      тестовые монолиты
+  core/      Java ↔ граф: парсинг (JavaParser), обзор и блок-схема, операции над AST, печать кода
+  analysis/  правила дефектов, метрики и Big O, авто-исправления, декомпозиция
+  runner/    песочница: javac + java в изолированном контейнере (run, run-batch)
+  api/       REST API (Spring Boot): проекты и версии, verify, quality gate, export
+frontend/    React + React Flow + elkjs + Monaco
+corpus/      тестовые монолиты, входы, bench-входы
 docs/        архитектура, поддержанный scope, ограничения
 ```
 
-Документация: [docs/architecture.md](docs/architecture.md). План работ: [PLAN.md](PLAN.md). Статус: [STATUS.md](STATUS.md). Контекст и решения лида: [LEAD.md](LEAD.md).
+План работ: [PLAN.md](PLAN.md). Статус: [STATUS.md](STATUS.md). Решения и риски: [LEAD.md](LEAD.md).
