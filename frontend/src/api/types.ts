@@ -110,6 +110,13 @@ export interface RunResult {
   timedOut: boolean;
 }
 
+/** POST /projects/{id}/run/stream — события text/event-stream (поле data — JSON) */
+export type RunStreamEvent =
+  | { event: 'compile'; data: { ok: boolean; problems?: Problem[]; output?: string } }
+  | { event: 'stdout' | 'stderr'; data: { text: string } }
+  | { event: 'exit'; data: { exitCode: number | null; timeMs: number; timedOut: boolean } }
+  | { event: 'error'; data: { message: string } };
+
 export interface VerifyCase {
   name: string;
   input?: string;
@@ -171,10 +178,3 @@ export interface DecomposeResult {
   notes?: string[];
   result?: ChangeResult | null;
 }
-
-/** POST /projects/{id}/run/stream — события text/event-stream (поле data — JSON) */
-export type RunStreamEvent =
-  | { event: 'compile'; data: { ok: boolean; problems?: Problem[]; output?: string } }
-  | { event: 'stdout' | 'stderr'; data: { text: string } }
-  | { event: 'exit'; data: { exitCode: number | null; timeMs: number; timedOut: boolean } }
-  | { event: 'error'; data: { message: string } };
