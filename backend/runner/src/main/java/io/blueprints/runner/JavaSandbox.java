@@ -128,6 +128,116 @@ public class JavaSandbox {
         }
     }
 
+    /** Приёмник событий потокового запуска (SSE): compile, stdout, stderr, exit. Вызывается из нескольких потоков. */
+    @FunctionalInterface
+    public interface StreamSink {
+        void event(String name, Object data) throws IOException;
+    }
+
+    /**
+     * Потоковый запуск для консоли: компиляция, затем вывод программы отдаётся кусками по мере появления (а не после
+     * завершения). Те же ограничения, что у run: таймаут с уничтожением дерева процессов, лимит вывода, без шума JVM.
+     */
+    public void runStreaming(RunnerRequest request, StreamSink sink) throws IOException, InterruptedException {
+        if (request.files() == null || request.files().isEmpty()) {
+            throw new IllegalArgumentException("Нет файлов для компиляции");
+        }
+        if (request.mainClass() != null && !FQN.matcher(request.mainClass()).matches()) {
+            throw new IllegalArgumentException("Некорректное имя mainClass: " + request.mainClass());
+        }
+        int timeoutMs = Math.min(request.timeoutMs() == null ? 10_000 : request.timeoutMs(), maxTimeoutMs);
+        Path work = Files.createTempDirectory("run-");
+        try {
+            Path src = Files.createDirectories(work.resolve("src"));
+            Path out = Files.createDirectories(work.resolve("out"));
+            List<String> sources = new ArrayList<>();
+            for (SourceFile file : request.files()) {
+                Path target = src.resolve(file.path()).normalize();
+                if (!target.startsWith(src)) {
+                    throw new IllegalArgumentException("Недопустимый путь файла: " + file.path());
+                }
+                Files.createDirectories(target.getParent());
+                Files.writeString(target, file.content(), StandardCharsets.UTF_8);
+                sources.add(target.toString());
+            }
+            List<String> javac = new ArrayList<>(List.of("javac", "-encoding", "UTF-8", "-d", out.toString()));
+            javac.addAll(sources);
+            ProcessOutcome compiled = exec(javac, work, "", Math.max(timeoutMs, 30_000));
+            String rawCompileOutput = compiled.stderr + compiled.stdout;
+            if (compiled.timedOut || compiled.exitCode != 0) {
+                sink.event("compile", new CompileResult(false, parseProblems(rawCompileOutput, src), scrub(rawCompileOutput, work)));
+                return;
+            }
+            sink.event("compile", new CompileResult(true, List.of(), scrub(rawCompileOutput, work)));
+            String mainClass = request.mainClass() != null ? request.mainClass() : findMainClass(request.files());
+            if (mainClass == null) {
+                sink.event("stderr", java.util.Map.of("text", "Не найден класс с методом main"));
+                sink.event("exit", new StreamExit(null, 0, false));
+                return;
+            }
+
+            Path stdinFile = work.resolve("stdin");
+            Files.writeString(stdinFile, request.stdin() == null ? "" : request.stdin(), StandardCharsets.UTF_8);
+            ProcessBuilder builder = new ProcessBuilder(List.of("java", "-Xmx" + jvmMaxHeap, "-Dfile.encoding=UTF-8",
+                    "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8", "-cp", out.toString(), mainClass))
+                    .directory(work.toFile())
+                    .redirectInput(stdinFile.toFile());
+            NOISY_ENV.forEach(builder.environment()::remove);
+            long start = System.nanoTime();
+            Process process = builder.start();
+            java.util.concurrent.atomic.AtomicLong budget = new java.util.concurrent.atomic.AtomicLong(maxOutputBytes);
+            Thread stdout = pump(process.getInputStream(), "stdout", sink, budget, work);
+            Thread stderr = pump(process.getErrorStream(), "stderr", sink, budget, work);
+            boolean finished = process.waitFor(timeoutMs, TimeUnit.MILLISECONDS);
+            if (!finished) {
+                process.descendants().forEach(ProcessHandle::destroyForcibly);
+                process.destroyForcibly().waitFor();
+            }
+            stdout.join(2_000);
+            stderr.join(2_000);
+            long timeMs = (System.nanoTime() - start) / 1_000_000;
+            sink.event("exit", new StreamExit(finished ? process.exitValue() : null, timeMs, !finished));
+        } finally {
+            deleteRecursively(work);
+        }
+    }
+
+    /** Итог потокового запуска. */
+    public record StreamExit(Integer exitCode, long timeMs, boolean timedOut) {
+    }
+
+    /** Читает поток процесса кусками и отдаёт их в sink; после лимита вывода дочитывает молча, чтобы процесс не встал. */
+    private static Thread pump(InputStream in, String name, StreamSink sink,
+                               java.util.concurrent.atomic.AtomicLong budget, Path work) {
+        Thread t = new Thread(() -> {
+            char[] buf = new char[4096];
+            boolean truncated = false;
+            try (java.io.Reader reader = new java.io.InputStreamReader(in, StandardCharsets.UTF_8)) {
+                int n;
+                while ((n = reader.read(buf)) != -1) {
+                    if (truncated) {
+                        continue;
+                    }
+                    String chunk = scrub(new String(buf, 0, n), work);
+                    long left = budget.addAndGet(-chunk.getBytes(StandardCharsets.UTF_8).length);
+                    if (left < 0) {
+                        truncated = true;
+                        sink.event(name, java.util.Map.of("text", "\n…[вывод обрезан]"));
+                        continue;
+                    }
+                    if (!chunk.isEmpty()) {
+                        sink.event(name, java.util.Map.of("text", chunk));
+                    }
+                }
+            } catch (IOException ignored) {
+                // клиент отключился или процесс убит по таймауту — поток просто заканчивается
+            }
+        }, "sandbox-" + name);
+        t.setDaemon(true);
+        t.start();
+        return t;
+    }
+
     private ProcessOutcome exec(List<String> command, Path dir, String stdin, int timeoutMs)
             throws IOException, InterruptedException {
         Path stdoutFile = dir.resolve("stdout-" + System.nanoTime());
