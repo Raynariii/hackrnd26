@@ -87,18 +87,42 @@ public class AnalysisController {
         }
     }
 
-    /** v1: только предложение разбиения (apply=false); автоприменение — 501, см. LEAD.md G7. */
+    /**
+     * Предложение разбиения (apply=false) или его применение (apply=true, G7 v1): {@code Decomposer.apply} переносит
+     * static-методы и поля в новые классы на копии → quality gate (компиляция + дифф-тесты против текущей версии) →
+     * новая версия. Поведение разошлось — 422, сессия не меняется.
+     */
     @PostMapping("/decompose")
     public DecomposeResult decompose(@PathVariable String projectId, @RequestBody(required = false) DecomposeRequest request) {
         ProjectSession session = store.get(projectId);
-        if (request != null && Boolean.TRUE.equals(request.apply())) {
-            throw ApiException.notImplemented("Автоприменение декомпозиции (apply=true)");
-        }
         Decomposer.Proposal proposal = decomposer.propose(session.model());
         List<ProposedClass> classes = proposal.proposal().stream()
                 .map(c -> new ProposedClass(c.className(), c.responsibility(), c.members()))
                 .toList();
-        return new DecomposeResult(classes, proposal.notes(), null);
+        if (request == null || !Boolean.TRUE.equals(request.apply())) {
+            return new DecomposeResult(classes, proposal.notes(), null);
+        }
+        synchronized (session) {
+            int version = session.version();
+            if (request.version() != null && request.version() != version) {
+                throw new VersionConflictException(request.version(), version);
+            }
+            List<SourceFile> before = session.files();
+            Decomposer.Applied applied;
+            try {
+                applied = decomposer.apply(before);
+            } catch (FixNotApplicableException e) {
+                throw new ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "decompose_not_applicable", e.getMessage(), List.of());
+            }
+            ProjectModel model = parseOrFail(applied.files());
+            VerifyReport report = qualityGate.check(session, applied.files(), "Разбиение «" + applied.description() + "»");
+            session.commit(version, applied.files(), model);
+            List<String> notes = new java.util.ArrayList<>(proposal.notes());
+            notes.addAll(applied.notes());
+            ChangeResult change = new ChangeResult(ProjectController.state(session),
+                    UnifiedDiff.of(before, applied.files()), applied.description(), report);
+            return new DecomposeResult(classes, notes, change);
+        }
     }
 
     private ProjectModel parseOrFail(List<SourceFile> files) {
