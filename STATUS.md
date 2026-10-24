@@ -62,6 +62,12 @@
       private): граничные значения + Random с фиксированным seed, строка на вызов `имя(args) -> результат | throws
       Тип: msg | timeout` (500 мс на вызов). Тест: рефакторинг через граф (extractMethod) даёт тот же вывод, смена
       условия — расхождение ровно в строках этого метода
+- [x] overview: инициализаторы `static {}` / `{}` (kind method, `meta.initializer`), компактный конструктор record
+      (kind constructor, `meta.compactConstructor`), константы enum с телом и анонимные классы — рамки kind class
+      (`meta.enumConstant` / `meta.anonymous`) со своими методами; подпись поля `int x, y` — «x, y». У всех новых
+      членов есть блок-схема, `:start` для insertAfter и рёбра call (`Members` — общее правило). Запрос роли 3 [3→1]
+      (PR — feat/core-integration-3). Проверено на 6 монолитах `feat/corpus-monoliths` роли 4: разбор, печать
+      байт-в-байт, графы всех методов, `raw` нет
 **Для фронта (роль 3):** находка → блок: блок, у которого `id` или `meta.covers` содержит любой из `Finding.nodeIds`.
 `start` блок-схемы покрывает id метода (находки уровня метода, например long-method).
 **Для фронта (роль 3), `POST /graph/ops`:** `editNode` у condition/loop/switch меняет только заголовок
