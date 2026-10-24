@@ -169,3 +169,23 @@ th, td { text-align: left; padding: 3px 4px; border-bottom: 1px solid var(--bord
   background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 12px; white-space: nowrap;
 }
 .bench-table { max-width: 720px; margin-top: 8px; }
+
+/* ---- инспектор узла: правка на графе ---- */
+.inspector { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+.inspector-code { display: block; white-space: pre-wrap; color: var(--muted); font-family: ui-monospace, monospace; font-size: 12px; }
+.inspector-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.inspector-actions button { padding: 4px 10px; font-size: 13px; }
+.inspector-form { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
+.inspector-form textarea, .inspector-form input {
+  width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px;
+  padding: 6px; font-family: ui-monospace, monospace; font-size: 12px; resize: vertical;
+}
+.inspector-form textarea:focus, .inspector-form input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.inspector-form label { font-size: 11px; }
+.inspector-note { font-size: 12px; }
+.inspector-error { font-size: 12px; white-space: pre-wrap; }
+button.primary { background: var(--accent); border-color: var(--accent); color: white; }
+button.danger { border-color: rgba(239, 68, 68, .6); color: #fca5a5; }
+.kind-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip { padding: 2px 8px; font-size: 12px; border-radius: 999px; }
+.chip.active { border-color: var(--accent); background: rgba(59, 130, 246, .2); }

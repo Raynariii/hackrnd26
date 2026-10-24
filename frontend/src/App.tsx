@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiRequestError } from './api/client';
-import type { Diagnostics, Finding, Graph, GraphNode, ProjectState, RunResult, SourceRange, VerifyReport } from './api/types';
+import type { Diagnostics, Finding, Graph, GraphNode, GraphOpRequest, ProjectState, RunResult, SourceRange, VerifyReport } from './api/types';
 import { AnalysisPanel } from './components/AnalysisPanel';
 import { BottomPanel } from './components/BottomPanel';
 import { CodeEditor } from './components/CodeEditor';
 import { GraphCanvas } from './components/GraphCanvas';
+import { NodeInspector } from './components/NodeInspector';
 import { VerifyScreen } from './components/VerifyScreen';
+import { findMethodAgain, firstChangedLine } from './flow/edit';
 import { findingsByNode, nodeAtLine, nodeForFinding } from './flow/sourceMap';
 
 export function App() {
@@ -13,6 +15,8 @@ export function App() {
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [graph, setGraph] = useState<Graph | null>(null);
+  /** Последний обзорный граф: по нему после правки находим открытый метод заново (id пересчитываются). */
+  const [overview, setOverview] = useState<Graph | null>(null);
   const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [highlight, setHighlight] = useState<SourceRange | null>(null);
@@ -50,9 +54,53 @@ export function App() {
     const file = state.files[0]?.path ?? null;
     setActiveFile(file);
     setDraft(state.files[0]?.content ?? '');
-    showGraph(await api.getGraph(state.id));
+    const ov = await api.getGraph(state.id);
+    setOverview(ov);
+    showGraph(ov);
     setDiagnostics(await api.getDiagnostics(state.id));
   }, [showGraph]);
+
+  /**
+   * Проект изменился (правка кода или операция графа): перечитать обзор, остаться в открытом методе,
+   * выделить узел на первой изменившейся строке и показать его в коде и на холсте.
+   */
+  const refreshAfterChange = async (prev: ProjectState, next: ProjectState, selectChanged: boolean) => {
+    setProject(next);
+    const changed = firstChangedLine(prev.files, next.files);
+    const file = changed?.file ?? (next.files.some((f) => f.path === activeFile) ? activeFile : next.files[0]?.path ?? null);
+    setActiveFile(file);
+    setDraft(next.files.find((f) => f.path === file)?.content ?? '');
+
+    const newOverview = await api.getGraph(next.id);
+    setOverview(newOverview);
+    let target = newOverview;
+    if (graph?.level === 'method' && graph.scope && overview) {
+      const methodId = findMethodAgain(overview, graph.scope, newOverview);
+      if (methodId) target = await api.getGraph(next.id, 'method', methodId);
+    }
+    showGraph(target);
+    setDiagnostics(await api.getDiagnostics(next.id));
+
+    if (changed) {
+      const node = selectChanged ? nodeAtLine(target, changed.file, changed.line) : null;
+      setSelected(node);
+      setHighlight(node?.range ?? { file: changed.file, startLine: changed.line, endLine: changed.line });
+      if (node) setFocus((f) => ({ id: node.id, seq: (f?.seq ?? 0) + 1 }));
+    }
+  };
+
+  /** Правка на графе: ошибка ядра (422) возвращается текстом в инспектор, а не в шапку. */
+  const applyGraphOp = async (req: Omit<GraphOpRequest, 'version'>): Promise<string | null> => {
+    if (!project) return 'Нет проекта';
+    try {
+      const next = await api.graphOp(project.id, { ...req, version: project.version });
+      await refreshAfterChange(project, next, req.op !== 'delete');
+      return null;
+    } catch (e) {
+      if (e instanceof ApiRequestError) return e.status === 409 ? 'Проект изменился в другой вкладке — обновите страницу' : e.message;
+      return String(e);
+    }
+  };
 
   useEffect(() => {
     if (import.meta.env.VITE_USE_MOCKS === 'true') {
@@ -71,7 +119,7 @@ export function App() {
     guard(async () => {
       if (!project || !activeFile) return;
       const files = project.files.map((f) => (f.path === activeFile ? { ...f, content: draft } : f));
-      await loadProject(await api.updateSource(project.id, project.version, files));
+      await refreshAfterChange(project, await api.updateSource(project.id, project.version, files), true);
     });
 
   /** Дифф-тесты версия 1 vs текущая + замер времени; отчёт открывается поверх холста. */
@@ -127,7 +175,11 @@ export function App() {
           <input type="file" accept=".java" multiple hidden onChange={(e) => importFiles(e.target.files)} />
         </label>
         <button disabled={!project} onClick={applySource}>Применить код</button>
-        <button disabled={!project} onClick={() => project && guard(async () => showGraph(await api.getGraph(project.id)))}>Обзор</button>
+        <button disabled={!project} onClick={() => project && guard(async () => {
+          const ov = await api.getGraph(project.id);
+          setOverview(ov);
+          showGraph(ov);
+        })}>Обзор</button>
         <button disabled={!project} onClick={() => project && guard(async () => setRun(await api.run(project.id)))}>▶ Запуск</button>
         <button disabled={!project || verifying} onClick={runVerify}>{verifying ? 'Проверяем…' : 'Проверить'}</button>
         {project && <span className="muted">v{project.version}</span>}
@@ -142,13 +194,7 @@ export function App() {
             {f.path}
           </div>
         ))}
-        {selected && (
-          <div className="selected-info">
-            <h3>Узел</h3>
-            <div>{selected.label} <span className="muted">({selected.kind})</span></div>
-            {selected.code && <code>{selected.code}</code>}
-          </div>
-        )}
+        {selected && graph && <NodeInspector node={selected} level={graph.level} onOp={applyGraphOp} />}
       </aside>
 
       <main className="canvas">

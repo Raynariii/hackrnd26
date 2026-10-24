@@ -1,11 +1,9 @@
-import type { ApiError, Diagnostics, Graph, ProjectState, RunResult, SourceFile, VerifyReport, VerifyRequest } from './types';
+import type { ApiError, Diagnostics, Graph, GraphOpRequest, ProjectState, RunResult, SourceFile, VerifyReport, VerifyRequest } from './types';
 import { mockApi } from '../mocks/mockApi';
 
-export class ApiRequestError extends Error {
-  constructor(readonly status: number, readonly body: ApiError) {
-    super(body.message);
-  }
-}
+import { ApiRequestError } from './errors';
+
+export { ApiRequestError };
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const response = await fetch(`/api${path}`, {
@@ -28,6 +26,8 @@ const realApi = {
     request<ProjectState>('PUT', `/projects/${id}/source`, { version, files }),
   getGraph: (id: string, level: 'overview' | 'method' = 'overview', method?: string) =>
     request<Graph>('GET', `/projects/${id}/graph?level=${level}${method ? `&method=${encodeURIComponent(method)}` : ''}`),
+  /** Операция над графом → изменение AST → новый код; граф после неё перечитывается (id пересчитаны). */
+  graphOp: (id: string, body: GraphOpRequest) => request<ProjectState>('POST', `/projects/${id}/graph/ops`, body),
   getDiagnostics: (id: string) => request<Diagnostics>('GET', `/projects/${id}/diagnostics`),
   run: (id: string, stdin = '') => request<RunResult>('POST', `/projects/${id}/run`, { stdin }),
   verify: (id: string, body: VerifyRequest = {}) => request<VerifyReport>('POST', `/projects/${id}/verify`, body),

@@ -119,6 +119,18 @@ export interface VerifyCase {
   mismatch?: string | null;
 }
 
+/** POST /projects/{id}/graph/ops — contracts/openapi.yaml GraphOpRequest. */
+export interface GraphOpRequest {
+  version: number;
+  op: 'editNode' | 'insertAfter' | 'delete' | 'move' | 'wrapIf' | 'wrapLoop' | 'extractMethod';
+  nodeId?: string;
+  nodeIds?: string[];
+  code?: string;
+  kind?: NodeKind;
+  targetId?: string;
+  name?: string;
+}
+
 export interface VerifyRequest {
   /** stdin-входы; если пусто — сервер берёт сохранённые и сгенерированные. */
   inputs?: string[];

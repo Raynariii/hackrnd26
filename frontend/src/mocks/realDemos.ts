@@ -5,6 +5,7 @@
 import type { Diagnostics, Graph } from '../api/types';
 import flow from './real/Flow.json';
 import orders from './real/OrdersMonolith.json';
+import mainOps from './real/MainOps.json';
 
 export interface RealDemo {
   file: string;
@@ -14,6 +15,27 @@ export interface RealDemo {
   methods: Record<string, Graph>;
   diagnostics: Omit<Diagnostics, 'version'>;
 }
+
+/** Снимок проекта на настоящем ядре: исходник, обзор и блок-схема processOrders. */
+export interface Snapshot {
+  source: string;
+  overview: Graph;
+  flow: Graph;
+  /** Настоящая диагностика анализатора для этого состояния кода. */
+  diagnostics: Omit<Diagnostics, 'version'>;
+}
+
+/**
+ * ?demo=main — Main.java и операции графа, выполненные настоящим DefaultGraphOperations (main, PR #7):
+ * изменить условие, вставить переменную/условие, удалить вызов, изменить заголовок цикла.
+ * Режим моков отвечает «после» только на эти операции из исходного состояния.
+ */
+export interface OpsDemo extends Snapshot {
+  file: string;
+  ops: Record<string, { request: { op: string; nodeId: string; code: string | null; kind: string | null }; after: Snapshot }>;
+}
+
+export const opsDemo = mainOps as unknown as OpsDemo;
 
 export const realDemos: Record<string, RealDemo> = {
   flow: flow as unknown as RealDemo,
