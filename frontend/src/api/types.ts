@@ -185,3 +185,9 @@ export interface Advice {
   suggestion: string;
   model?: string | null;
 }
+
+/** POST /projects/{id}/complexity — contracts/openapi.yaml → ComplexityResult */
+export interface ComplexityResult {
+  version: number;
+  current: string;
+}
