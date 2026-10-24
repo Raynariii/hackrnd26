@@ -1,1 +1,0 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/api/client.ts","./src/api/types.ts","./src/components/analysispanel.tsx","./src/components/blocknode.tsx","./src/components/bottompanel.tsx","./src/components/codeeditor.tsx","./src/components/graphcanvas.tsx","./src/components/layout.ts","./src/mocks/fixtures.ts","./src/mocks/mockapi.ts","./vite.config.ts"],"version":"5.6.3"}

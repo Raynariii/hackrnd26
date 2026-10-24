@@ -1,9 +1,11 @@
 package io.blueprints.core.graph;
 
 import com.github.javaparser.ast.Node;
+import com.github.javaparser.ast.body.BodyDeclaration;
 import com.github.javaparser.ast.body.CallableDeclaration;
+import com.github.javaparser.ast.body.CompactConstructorDeclaration;
+import com.github.javaparser.ast.body.InitializerDeclaration;
 import com.github.javaparser.ast.body.ConstructorDeclaration;
-import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.comments.Comment;
 import com.github.javaparser.ast.expr.BooleanLiteralExpr;
@@ -96,26 +98,29 @@ final class MethodFlowBuilder {
         }
         Node ast = model.nodeById(methodNodeId.substring(1))
                 .orElseThrow(() -> new IllegalArgumentException("Метод не найден: " + methodNodeId));
-        if (!(ast instanceof CallableDeclaration<?> callable)) {
+        if (!(ast instanceof CallableDeclaration<?> || ast instanceof InitializerDeclaration
+                || ast instanceof CompactConstructorDeclaration)) {
             throw new IllegalArgumentException("Узел " + methodNodeId + " не метод и не конструктор");
         }
         String file = model.fileOf(ast).orElse(null);
         MethodFlowBuilder builder = new MethodFlowBuilder(model, file, methodNodeId);
-        builder.buildCallable(methodNodeId, callable);
+        builder.buildCallable(methodNodeId, (BodyDeclaration<?>) ast);
         return new Graph(GraphLevel.METHOD, methodNodeId, builder.nodes, builder.edges);
     }
 
-    private void buildCallable(String methodId, CallableDeclaration<?> callable) {
+    /** Метод, конструктор, компактный конструктор record или инициализатор ({@code static {}}). */
+    private void buildCallable(String methodId, BodyDeclaration<?> callable) {
         String startId = methodId + ":start";
         Map<String, Object> startMeta = new LinkedHashMap<>();
-        startMeta.put("name", callable.getNameAsString());
+        startMeta.put("name", Members.label(callable));
         startMeta.put("covers", List.of(methodId));
-        nodes.add(new GraphNode(startId, null, NodeKind.START,
-                callable instanceof ConstructorDeclaration ? "Конструктор" : "Метод",
-                callable.getDeclarationAsString(true, true, true).strip(), rangeOf(callable), null, List.of(), startMeta));
+        String label = callable instanceof InitializerDeclaration ? "Инициализатор"
+                : callable instanceof ConstructorDeclaration || callable instanceof CompactConstructorDeclaration
+                ? "Конструктор" : "Метод";
+        nodes.add(new GraphNode(startId, null, NodeKind.START, label, Members.header(callable).strip(),
+                rangeOf(callable), null, List.of(), startMeta));
 
-        BlockStmt body = callable instanceof MethodDeclaration m ? m.getBody().orElse(null)
-                : ((ConstructorDeclaration) callable).getBody();
+        BlockStmt body = Members.body(callable).orElse(null);
         List<Exit> outs = List.of(Exit.next(startId));
         if (body != null) {
             outs = block(body.getStatements(), outs, null);

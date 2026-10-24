@@ -1,11 +1,8 @@
-import type { ApiError, Diagnostics, Graph, ProjectState, RunResult, SourceFile, VerifyReport } from './types';
-import { mockApi } from '../mocks/mockApi';
+import type { ApiError, ChangeResult, DecomposeResult, Diagnostics, Graph, GraphOpRequest, ProjectState, RunResult, SourceFile, VerifyReport, VerifyRequest } from './types';
+import { ApiRequestError } from './errors';
+import { readExportHeaders, type ExportFile } from './download';
 
-export class ApiRequestError extends Error {
-  constructor(readonly status: number, readonly body: ApiError) {
-    super(body.message);
-  }
-}
+export { ApiRequestError };
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const response = await fetch(`/api${path}`, {
@@ -13,11 +10,13 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  if (!response.ok) {
-    const error = (await response.json().catch(() => ({ error: 'http_error', message: response.statusText }))) as ApiError;
-    throw new ApiRequestError(response.status, error);
-  }
+  if (!response.ok) throw await failure(response);
   return (await response.json()) as T;
+}
+
+async function failure(response: Response): Promise<ApiRequestError> {
+  const error = (await response.json().catch(() => ({ error: 'http_error', message: response.statusText }))) as ApiError;
+  return new ApiRequestError(response.status, error);
 }
 
 const realApi = {
@@ -28,12 +27,30 @@ const realApi = {
     request<ProjectState>('PUT', `/projects/${id}/source`, { version, files }),
   getGraph: (id: string, level: 'overview' | 'method' = 'overview', method?: string) =>
     request<Graph>('GET', `/projects/${id}/graph?level=${level}${method ? `&method=${encodeURIComponent(method)}` : ''}`),
+  /** Операция над графом → изменение AST → новый код; граф после неё перечитывается (id пересчитаны). */
+  graphOp: (id: string, body: GraphOpRequest) => request<ProjectState>('POST', `/projects/${id}/graph/ops`, body),
+  /** Авто-исправление находки (FixEngine роли 2). Находка должна быть из текущей версии. */
+  applyFix: (id: string, findingId: string, version: number) =>
+    request<ChangeResult>('POST', `/projects/${id}/fixes/${encodeURIComponent(findingId)}`, { version }),
   getDiagnostics: (id: string) => request<Diagnostics>('GET', `/projects/${id}/diagnostics`),
   run: (id: string, stdin = '') => request<RunResult>('POST', `/projects/${id}/run`, { stdin }),
-  verify: (id: string) => request<VerifyReport>('POST', `/projects/${id}/verify`, {}),
+  verify: (id: string, body: VerifyRequest = {}) => request<VerifyReport>('POST', `/projects/${id}/verify`, body),
+  /** Предложение разбиения монолита на классы (Decomposer роли 2). apply=true на сервере пока 501 — не шлём. */
+  decompose: (id: string, version: number) =>
+    request<DecomposeResult>('POST', `/projects/${id}/decompose`, { version, apply: false }),
+  /** Zip: текущий код + JUnit golden-master тесты против версии 1 + отчёт проверки; сервер сам прогоняет verify. */
+  exportProject: async (id: string): Promise<ExportFile> => {
+    const response = await fetch(`/api/projects/${id}/export`);
+    if (!response.ok) throw await failure(response);
+    return readExportHeaders(response.headers, await response.blob(), `project-${id}.zip`);
+  },
 };
 
 export type Api = typeof realApi;
 
-/** VITE_USE_MOCKS=true — фронт работает на фикстурах без бэкенда (npm run dev:mock). */
-export const api: Api = import.meta.env.VITE_USE_MOCKS === 'true' ? mockApi : realApi;
+/**
+ * VITE_USE_MOCKS=true — фронт работает на фикстурах без бэкенда (npm run dev:mock).
+ * Моки грузятся динамически: в обычной сборке их код и снимки ядра (~сотни КБ) не скачиваются.
+ */
+export const api: Api =
+  import.meta.env.VITE_USE_MOCKS === 'true' ? (await import('../mocks/mockApi')).mockApi : realApi;
