@@ -198,6 +198,27 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
 
+  /projects/{projectId}/complexity:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    post:
+      tags: [analysis]
+      summary: Big O выделенного фрагмента блок-схемы
+      description: 'Сложность выбранных блоков (id узлов графа) с учётом циклов-предков; `<id метода>:start` — весь метод. Только чтение.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ComplexityRequest' }
+      responses:
+        '200':
+          description: Оценка
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ComplexityResult' }
+        '400': { description: 'Пустой nodeIds', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/VersionConflict' }
+
   /projects/{projectId}/run:
     parameters: [{ $ref: '#/components/parameters/ProjectId' }]
     post:
@@ -563,6 +584,23 @@ components:
         findingId: { type: string }
         suggestion: { type: string, description: 'Объяснение и исправленный фрагмент (markdown)' }
         model: { type: [string, 'null'] }
+
+    ComplexityRequest:
+      type: object
+      required: [nodeIds]
+      properties:
+        version: { type: [integer, 'null'], description: 'Версия, по графу которой выбраны id; иначе 409' }
+        nodeIds:
+          type: array
+          minItems: 1
+          items: { type: string }
+
+    ComplexityResult:
+      type: object
+      required: [version, current]
+      properties:
+        version: { type: integer }
+        current: { type: string, example: 'O(n²)' }
 
     RunProjectRequest:
       type: object
