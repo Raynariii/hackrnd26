@@ -74,7 +74,7 @@ class DecomposerTest {
                 .contains("analyzeOrders(List)", "validateOrder(String)", "reportStats()");
         assertThat(members(proposal, "Optimizer")).contains("sortOrders(List)", "deduplicate(List)");
         assertThat(members(proposal, "Main")).contains("main(String[])", "run()");
-        assertThat(proposal.notes()).singleElement().asString().contains("→ 4 класса");
+        assertThat(proposal.notes()).anySatisfy(note -> assertThat(note).contains("→ 4 класса"));
     }
 
     @Test
@@ -112,6 +112,44 @@ class DecomposerTest {
         Decomposer.Proposal proposal = propose(source);
 
         assertThat(members(proposal, "Analyzer")).contains("field counter");
+    }
+
+    @Test
+    void reportsPartitionCohesionForJury() {
+        String source = """
+                class Monolith {
+                    void readFile(String path) {
+                        parseLine(path);
+                    }
+
+                    String parseLine(String line) {
+                        return line;
+                    }
+
+                    void loadInput() {
+                        readFile("a");
+                    }
+
+                    void analyzeOrders(java.util.List<String> orders) {
+                        validateOrder("a");
+                    }
+
+                    boolean validateOrder(String order) {
+                        return order != null;
+                    }
+
+                    void reportStats() {
+                        System.out.println(validateOrder("x"));
+                    }
+                }
+                """;
+
+        Decomposer.Proposal proposal = propose(source);
+
+        assertThat(proposal.notes()).anySatisfy(note -> assertThat(note)
+                .contains("Сцепление")
+                .contains("внутри групп")
+                .contains("между группами"));
     }
 
     @Test
