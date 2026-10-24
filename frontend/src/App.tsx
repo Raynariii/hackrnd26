@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Box, Boxes, ChevronRight, CircleAlert, CircleCheck, CircleX, Download, DraftingCompass, FileCode2, FlaskConical, FolderOpen, Gauge, LayoutGrid, Moon, Play, ShieldCheck, SquareFunction, Sun, Terminal, TriangleAlert, Upload, Workflow, X } from 'lucide-react';
+import { Box, ChevronRight, ChevronsLeft, ChevronsRight, CircleAlert, CircleCheck, CircleX, Download, DraftingCompass, FileCode2, FlaskConical, FolderOpen, LayoutGrid, LoaderCircle, Moon, PanelRightOpen, Play, ShieldCheck, SquareFunction, Sun, Terminal, TriangleAlert, Upload, Workflow, X } from 'lucide-react';
 import { api, ApiRequestError, isUnsupported } from './api/client';
 import { applyRunEvent, STREAM_START } from './flow/run';
 import type { DecomposeResult, Diagnostics, Finding, Graph, GraphNode, GraphOpRequest, NodeKind, ProjectState, RunResult, SourceFile, SourceRange, VerifyReport } from './api/types';
@@ -41,9 +41,9 @@ function store(key: string, value: unknown) {
 }
 
 /** Кнопка полосы инструментов (как tool window stripe в IDE): открывает и прячет панель. */
-function StripeButton({ icon, label, active, badge, onClick }: { icon: React.ReactNode; label: string; active: boolean; badge?: number; onClick: () => void }) {
+function StripeButton({ icon, label, active, badge, onClick, disabled, title }: { icon: React.ReactNode; label: string; active?: boolean; badge?: number; onClick: () => void; disabled?: boolean; title?: string }) {
   return (
-    <button className="stripe-btn" aria-pressed={active} title={label} aria-label={label} onClick={onClick}>
+    <button className="stripe-btn" aria-pressed={active} title={title ?? label} aria-label={label} onClick={onClick} disabled={disabled}>
       {icon}
       {!!badge && <span className="stripe-badge">{badge > 99 ? '99+' : badge}</span>}
     </button>
@@ -139,12 +139,10 @@ export function App() {
 
   const togglePanel = (key: keyof Panels, force?: boolean) => setPanels((p) => ({ ...p, [key]: force ?? !p[key] }));
   /** Кнопка полосы: открыть панель на нужной вкладке; повторное нажатие на активную — спрятать. */
+  /** Показать правую панель на нужной вкладке (сворачивается кнопкой в её шапке). */
   const openRight = (tab: RightTab) => {
-    if (panels.right && rightTab === tab) togglePanel('right', false);
-    else {
-      setRightTab(tab);
-      togglePanel('right', true);
-    }
+    setRightTab(tab);
+    togglePanel('right', true);
   };
   const openBottom = (tab: BottomTab) => {
     if (panels.bottom && bottomTab === tab) togglePanel('bottom', false);
@@ -546,10 +544,19 @@ export function App() {
     target.addEventListener('pointerup', up);
   };
 
-  const columns = ['40px', panels.left ? 'clamp(220px, 18vw, 280px)' : null, 'minmax(0, 1fr)', panels.right ? 'clamp(300px, 25vw, 380px)' : null, '40px'].filter(Boolean).join(' ');
+  // Колонка полосы — ровно её ширина (--stripe-w), иначе полоса залезает под соседнюю панель.
+  const columns = ['var(--stripe-w)', panels.left ? 'clamp(220px, 18vw, 280px)' : null, 'minmax(0, 1fr)', panels.right ? 'clamp(300px, 25vw, 380px)' : null].filter(Boolean).join(' ');
   const areaRow = (bottom: boolean) =>
-    ['lstripe', panels.left ? (bottom ? 'bottom' : 'left') : null, bottom ? 'bottom' : 'center', panels.right ? (bottom ? 'bottom' : 'right') : null, 'rstripe']
+    ['lstripe', panels.left ? (bottom ? 'bottom' : 'left') : null, bottom ? 'bottom' : 'center', panels.right ? (bottom ? 'bottom' : 'right') : null]
       .filter(Boolean).join(' ');
+  /** Свёрнутая правая панель: кнопка «показать» в правом углу шапки видимого центрального острова. */
+  const showRightButton = !panels.right && project && (
+    <button className="ghost icon-text show-right" onClick={() => togglePanel('right', true)}
+      title="Показать панель: проблемы, метрики, разбиение" aria-label="Показать панель проблем">
+      <PanelRightOpen size={16} />
+      {findingsCount > 0 && <span className="tab-count">{findingsCount}</span>}
+    </button>
+  );
   const workspaceStyle: CSSProperties = {
     gridTemplateColumns: columns,
     gridTemplateRows: panels.bottom ? 'minmax(0, 1fr) clamp(170px, 26vh, 260px)' : 'minmax(0, 1fr)',
@@ -583,9 +590,6 @@ export function App() {
           <span className="project-name" title={project?.name ?? undefined}>{project ? project.name ?? activeFile : 'Нет проекта'}</span>
           {project && <span className="muted" title="Версия проекта: каждая правка — новая версия, v1 — эталон поведения">v{project.version}</span>}
         </div>
-        <button onClick={() => fileInput.current?.click()} title="Открыть .java-файлы (можно перетащить в окно)">
-          <FolderOpen size={16} />Открыть
-        </button>
         <div className="toolbar-spacer" />
         <div className="segmented" role="group" aria-label="Раскладка">
           <button aria-pressed={view === 'graph'} onClick={() => setView('graph')} disabled={!project} title="Только граф — для показа">Граф</button>
@@ -602,27 +606,31 @@ export function App() {
             <ShieldCheck size={15} />{verifying ? 'Проверяем…' : 'Проверить поведение'}
           </button>
         </div>
-        <button disabled={!project || exporting} onClick={exportProject}
-          title="Zip: текущий код, JUnit-тесты против версии 1 (golden master) и отчёт проверки; запуск — mvn test">
-          <Download size={16} />{exporting ? 'Готовим архив…' : 'Экспорт с тестами'}
-        </button>
-        <button className="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          title={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'} aria-label="Сменить тему">
-          {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-        </button>
       </header>
 
       <div className="workspace" style={workspaceStyle}>
         <nav className="stripe" style={{ gridArea: 'lstripe' }} aria-label="Панели слева">
           <StripeButton icon={<FileCode2 size={18} />} label="Проект и выделенный блок" active={panels.left} onClick={() => togglePanel('left')} />
+          <StripeButton icon={<FolderOpen size={18} />} label="Открыть" title="Открыть .java-файлы (можно перетащить в окно)" onClick={() => fileInput.current?.click()} />
+          <StripeButton icon={exporting ? <LoaderCircle size={18} className="spin" /> : <Download size={18} />} label="Экспорт с тестами"
+            title={exporting ? 'Готовим архив…' : 'Экспорт с тестами: zip — текущий код, JUnit-тесты против версии 1 (golden master) и отчёт проверки; запуск — mvn test'}
+            disabled={!project || exporting} onClick={exportProject} />
           <div className="stripe-spacer" />
           <StripeButton icon={<Terminal size={18} />} label="Консоль" active={panels.bottom && bottomTab === 'console'} onClick={() => openBottom('console')} />
           <StripeButton icon={<FlaskConical size={18} />} label="Результат тестов" active={panels.bottom && bottomTab === 'tests'} onClick={() => openBottom('tests')} />
+          <div className="stripe-sep" />
+          <StripeButton icon={theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />} label="Сменить тему"
+            title={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} />
         </nav>
 
         {panels.left && (
           <aside className="island sidebar" style={{ gridArea: 'left' }}>
-            <div className="island-head"><span className="island-title">Проводник</span></div>
+            <div className="island-head">
+              <span className="island-title">Проводник</span>
+              <div className="island-actions">
+                <button className="ghost icon" onClick={() => togglePanel('left', false)} title="Свернуть панель" aria-label="Свернуть проводник"><ChevronsLeft size={16} /></button>
+              </div>
+            </div>
             <div className="island-body pad explorer-body">
               {!project && <div className="muted">Нет открытых файлов</div>}
               {project && (
@@ -675,6 +683,7 @@ export function App() {
             </span>
           </div>
         )}
+              {view !== 'code' && showRightButton}
             </div>
             <div className="canvas">
               {graph?.level === 'method' && (
@@ -726,6 +735,7 @@ export function App() {
                 {dirty && <span className="head-hint">Ctrl+S — применить</span>}
                 <button className={dirty ? 'primary' : ''} disabled={!project || !dirty} onClick={applySource}
                   title="Перестроить граф и диагностику по коду из редактора (Ctrl+S)">Применить код</button>
+                {view === 'code' && showRightButton}
               </div>
             </div>
             <div className="code">
@@ -744,6 +754,9 @@ export function App() {
                 </button>
                 <button role="tab" className={rightTab === 'metrics' ? 'active' : ''} onClick={() => setRightTab('metrics')}>Метрики</button>
                 <button role="tab" className={rightTab === 'decompose' ? 'active' : ''} onClick={() => setRightTab('decompose')}>Разбиение</button>
+              </div>
+              <div className="island-actions">
+                <button className="ghost icon" onClick={() => togglePanel('right', false)} title="Свернуть панель — граф и код станут шире" aria-label="Свернуть панель проблем"><ChevronsRight size={16} /></button>
               </div>
             </div>
             <div className="island-body pad">
@@ -784,12 +797,6 @@ export function App() {
           </aside>
         )}
 
-        <nav className="stripe" style={{ gridArea: 'rstripe' }} aria-label="Панели справа">
-          <StripeButton icon={<CircleAlert size={18} />} label="Проблемы" badge={findingsCount}
-            active={panels.right && rightTab === 'problems'} onClick={() => openRight('problems')} />
-          <StripeButton icon={<Gauge size={18} />} label="Метрики" active={panels.right && rightTab === 'metrics'} onClick={() => openRight('metrics')} />
-          <StripeButton icon={<Boxes size={18} />} label="Разбиение на классы" active={panels.right && rightTab === 'decompose'} onClick={() => openRight('decompose')} />
-        </nav>
 
         {panels.bottom && (
           <section className="island output" style={{ gridArea: 'bottom' }}>
