@@ -8,7 +8,8 @@ import com.github.javaparser.ast.expr.NameExpr;
 import io.blueprints.core.model.ProjectModel;
 
 import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.Collections;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -20,9 +21,9 @@ import java.util.Set;
  * Алгоритм декомпозиции монолита: классифицирует методы god-класса по имени (camelCase-токены) и по
  * тому, кого метод зовёт, и раскладывает их по {@code Parser / Analyzer / Optimizer / Main}.
  *
- * <p>Внутренности подроли 2c: публичная точка входа для api — {@code Decomposer#propose(model)},
- * {@code Decomposer} остаётся фасадом. v1 предлагает перенос, ничего не перемещая: применение —
- * отдельный шаг после quality gate (роль 4).
+ * <p>Внутренности подроли 2c: публичная точка входа для api — {@code Decomposer#propose(model)} и
+ * {@code Decomposer#apply(files)}, {@code Decomposer} остаётся фасадом. Здесь — только классификация;
+ * фактический перенос статических методов — {@link MonolithApplier}.
  */
 public final class MonolithSplitter {
 
@@ -34,19 +35,36 @@ public final class MonolithSplitter {
     public record Split(List<Group> groups, List<String> notes) {
     }
 
+    /**
+     * План применения для одного класса: владелец и группы его методов (те же, что в предложении).
+     * Нужен {@code MonolithApplier}: предложение показывает сигнатуры, а применению нужны AST-узлы.
+     */
+    public record Plan(ClassOrInterfaceDeclaration owner, List<PlannedGroup> groups) {
+    }
+
+    /** Группа методов, которая станет отдельным классом при применении. */
+    public record PlannedGroup(String className, String responsibility, List<MethodDeclaration> methods) {
+    }
+
     /** Минимум методов в классе, чтобы вообще обсуждать декомпозицию. */
     private static final int MIN_METHODS = 6;
     /** Минимум методов в группе, чтобы выделять её в отдельный класс. */
     private static final int MIN_GROUP = 2;
 
-    private static final Map<Responsibility, List<String>> KEYWORDS = Map.of(
-            Responsibility.PARSER, List.of("read", "parse", "load", "scan", "input", "token", "file", "line",
-                    "prompt", "next", "import", "extract"),
-            Responsibility.ANALYZER, List.of("analyz", "valid", "check", "detect", "find", "count", "stat",
-                    "report", "comput", "calculat", "summar", "metric", "inspect", "verif", "evaluat"),
-            Responsibility.OPTIMIZER, List.of("optim", "sort", "dedup", "merge", "cach", "index", "normaliz",
-                    "clean", "filter", "group", "aggregat", "compress", "reduce", "batch"),
-            Responsibility.MAIN, List.of("main", "run", "start", "execut", "demo", "cli", "menu", "usage"));
+    private static final Map<Responsibility, List<String>> KEYWORDS = keywords();
+
+    /** {@link EnumMap} — обход в порядке объявления ответственностей, разбиение детерминировано. */
+    private static Map<Responsibility, List<String>> keywords() {
+        Map<Responsibility, List<String>> map = new EnumMap<>(Responsibility.class);
+        map.put(Responsibility.PARSER, List.of("read", "parse", "load", "scan", "input", "token", "file", "line",
+                "prompt", "next", "import", "extract"));
+        map.put(Responsibility.ANALYZER, List.of("analyz", "valid", "check", "detect", "find", "count", "stat",
+                "report", "comput", "calculat", "summar", "metric", "inspect", "verif", "evaluat"));
+        map.put(Responsibility.OPTIMIZER, List.of("optim", "sort", "dedup", "merge", "cach", "index", "normaliz",
+                "clean", "filter", "group", "aggregat", "compress", "reduce", "batch"));
+        map.put(Responsibility.MAIN, List.of("main", "run", "start", "execut", "demo", "cli", "menu", "usage"));
+        return Collections.unmodifiableMap(map);
+    }
 
     private enum Responsibility {
         PARSER("Parser", "Разбор и чтение входных данных"),
@@ -68,6 +86,25 @@ public final class MonolithSplitter {
     public Split split(ProjectModel model) {
         List<Group> classes = new ArrayList<>();
         List<String> notes = new ArrayList<>();
+        for (Plan plan : plan(model)) {
+            List<Group> split = new ArrayList<>();
+            for (PlannedGroup group : plan.groups()) {
+                split.add(proposedClass(plan.owner(), group.className(), group.responsibility(), group.methods()));
+            }
+            classes.addAll(split);
+            notes.add("Класс " + plan.owner().getNameAsString()
+                    + " (" + model.fileOf(plan.owner()).orElse("?") + "): " + plan.owner().getMethods().size()
+                    + " методов → " + split.size() + " класса");
+        }
+        return new Split(List.copyOf(classes), List.copyOf(notes));
+    }
+
+    /**
+     * План применения: для каждого god-класса — группы методов с AST-узлами. Порядок групп
+     * как в предложении (Parser, Analyzer, Optimizer, Main, Utils), чтобы имена классов совпадали.
+     */
+    public List<Plan> plan(ProjectModel model) {
+        List<Plan> plans = new ArrayList<>();
         model.units().forEach((file, cu) -> {
             for (ClassOrInterfaceDeclaration type : cu.findAll(ClassOrInterfaceDeclaration.class)) {
                 if (type.isInterface()) {
@@ -78,23 +115,21 @@ public final class MonolithSplitter {
                     continue;
                 }
                 Map<Responsibility, List<MethodDeclaration>> groups = group(methods);
-                List<Group> split = new ArrayList<>();
+                List<PlannedGroup> split = new ArrayList<>();
                 for (Map.Entry<Responsibility, List<MethodDeclaration>> group : groups.entrySet()) {
                     if (group.getValue().size() < MIN_GROUP) {
                         continue;
                     }
-                    split.add(proposedClass(type, group.getKey(), group.getValue()));
+                    split.add(new PlannedGroup(group.getKey().className, group.getKey().description,
+                            List.copyOf(group.getValue())));
                 }
                 if (split.size() < 2) {
                     continue;
                 }
-                split.sort(order());
-                classes.addAll(split);
-                notes.add("Класс " + type.getNameAsString() + " (" + file + "): " + methods.size()
-                        + " методов → " + split.size() + " класса");
+                plans.add(new Plan(type, List.copyOf(split)));
             }
         });
-        return new Split(List.copyOf(classes), List.copyOf(notes));
+        return List.copyOf(plans);
     }
 
     private Map<Responsibility, List<MethodDeclaration>> group(List<MethodDeclaration> methods) {
@@ -166,14 +201,14 @@ public final class MonolithSplitter {
         return calls;
     }
 
-    private static Group proposedClass(ClassOrInterfaceDeclaration owner, Responsibility responsibility,
+    private static Group proposedClass(ClassOrInterfaceDeclaration owner, String className, String responsibility,
                                        List<MethodDeclaration> methods) {
         List<String> members = new ArrayList<>();
         for (MethodDeclaration method : methods) {
             members.add(signature(method));
         }
         members.addAll(fieldsUsedBy(owner, methods));
-        return new Group(responsibility.className, responsibility.description, List.copyOf(members));
+        return new Group(className, responsibility, List.copyOf(members));
     }
 
     private static String signature(MethodDeclaration method) {
@@ -216,17 +251,5 @@ public final class MonolithSplitter {
         String name = generic >= 0 ? type.substring(0, generic) : type;
         int dot = name.lastIndexOf('.');
         return dot >= 0 ? name.substring(dot + 1) : name;
-    }
-
-    /** Порядок групп в ответе: как в PLAN.md — Parser, Analyzer, Optimizer, Main, Utils. */
-    static Comparator<Group> order() {
-        return Comparator.comparingInt(group -> {
-            for (Responsibility responsibility : Responsibility.values()) {
-                if (responsibility.className.equals(group.className())) {
-                    return responsibility.ordinal();
-                }
-            }
-            return Responsibility.values().length;
-        });
     }
 }
