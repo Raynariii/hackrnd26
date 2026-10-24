@@ -151,7 +151,10 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
       после печати (2 теста в `FixEngineTest`; поведение кода не менялось)
 - [x] P1 тест на корпусе: `FixEngineCorpusTest` — для каждого вида исправления применяет применимую находку
       на мини-монолите и на `corpus/**/Main.java`, результат компилируется javac (PR #49)
-- [ ] P2 `extract-method` для `long-method` / `duplicate-code` через `GraphOperations.extractMethod` ядра (роль 1)
+- [x] P2 точный дубль → общий метод через ядро (PR #54): фиксер `ExtractDuplicateFix`, `Fix.kind = extract-duplicate`;
+      ядро выносит первое вхождение (`extractMethod` — само считает параметры и возврат), во второе
+      вставляется клон его вызова; проверка применимости — на копии модели, отказы на разные
+      тексты/классы/`var`/несколько выходных переменных; 3 теста с javac
 **Известное ограничение:** `nested-loop-same-collection` (пары по одной коллекции) авто-исправления не имеет —
 **Для фронта:** новые id — правило `nested-loop-linear-search`, `Fix.kind = nested-loop-index` (кнопка «Применить»
 для вложенного поиска совпадения).
