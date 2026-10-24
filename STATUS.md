@@ -151,7 +151,10 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
       после печати (2 теста в `FixEngineTest`; поведение кода не менялось)
 - [x] P1 тест на корпусе: `FixEngineCorpusTest` — для каждого вида исправления применяет применимую находку
       на мини-монолите и на `corpus/**/Main.java`, результат компилируется javac (PR #49)
-- [ ] P2 `extract-method` для `long-method` / `duplicate-code` через `GraphOperations.extractMethod` ядра (роль 1)
+- [x] P2 точный дубль → общий метод через ядро (PR #54): фиксер `ExtractDuplicateFix`, `Fix.kind = extract-duplicate`;
+      ядро выносит первое вхождение (`extractMethod` — само считает параметры и возврат), во второе
+      вставляется клон его вызова; проверка применимости — на копии модели, отказы на разные
+      тексты/классы/`var`/несколько выходных переменных; 3 теста с javac
 **Известное ограничение:** `nested-loop-same-collection` (пары по одной коллекции) авто-исправления не имеет —
 **Для фронта:** новые id — правило `nested-loop-linear-search`, `Fix.kind = nested-loop-index` (кнопка «Применить»
 для вложенного поиска совпадения).
@@ -203,7 +206,6 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 - [ ] палитра блоков (drag&drop) → `graph/ops` — режется первой из фронта (LEAD.md §5, п. 4 лестницы)
 - [x] экран проверки: N/N тестов, «Поведение совпадает», график времени до/после (PR #8; `POST /verify` роли 4 влит в #19; моки `?verify=fail` / `?verify=nocompile`)
 - [x] Monaco без CDN (локальная загрузка для офлайн-демо) (PR #2)
-- [x] за роль 4 (с согласия разработчика): `docs/scope.md` — матрица scope 1–4 + бонус (G9), разделы «Поддержанный scope» и «Ограничения» в `docs/architecture.md`; пробелы визуализации — запрос роли 1 в Notion (PR #33)
 **Блокеры:** `npm test` (node --test) пока не в CI — запрос роли 4. Рендер проверен на настоящих блок-схемах ядра (PR #5):
 `npm run dev:mock` → `?demo=flow` / `?demo=orders`. Правка на графе проверена на записанных операциях настоящего ядра: `?demo=main`.
 **Дальше:** сквозная проверка с живым api (`docker compose up`); палитра drag&drop — если останется время.
@@ -229,14 +231,13 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 - [x] `POST /decompose` (запрос роли 2): `Decomposer.propose` → `proposal` + `notes`; `apply=true` → 501 (G7)
 - [ ] bench-входы `corpus/*/inputs/bench-*.txt` растущего размера (G4)
 - [ ] монолиты организаторов → `corpus/` (G8, как только лид их получит)
-- [x] `docs/scope.md`: матрица «конструкция → граф / генерация / где проверено» по разделам 1–4 + бонус (G9, PR — `feat/docs-jury`)
+- [ ] `docs/scope.md`: матрица «конструкция → граф / генерация / тест» по разделам 1–4 + бонус (G9)
 - [ ] фаззинг статических методов через генерируемую обвязку (G5, P2)
 - [ ] генерация JUnit golden-master + `GET /export` (zip)
 - [ ] бенчмарк n, 2n, 4n
 - [ ] SSE-консоль для `/run` (опц.)
 - [ ] корпус: 5–8 монолитов ~1000 строк, покрытие scope 1–4 (+ бонус)
-- [x] `docs/architecture.md` (модули, поток данных, verify/gate/экспорт, песочница, тесты, **ограничения**) и README для жюри:
-      запуск, сценарий демо на `06-demo-warehouse` (UI и curl — проверен буквально), таблица «что сдаём» (PR — `feat/docs-jury`)
+- [ ] `docs/`: архитектура, поддержанный scope, ограничения; README для жюри
 - [ ] проверить `docker compose up --build` с нуля
 **Для фронта (роль 3):** `POST /verify` работает по контракту `VerifyReport` (тело `{}` допустимо). Готовы: `cases[].name`
 («corpus/…/01.txt», «Вход №1», «Граничный: …», «Бенчмарк: n = …»), `mismatch` — текст для панели «Тесты»,
@@ -254,7 +255,6 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 | Роль 2 | `POST /api/projects/{id}/decompose` с `apply=true` (сейчас 501): `Decomposer.Applied applied = new Decomposer().apply(beforeFiles)` → quality gate как у `/fixes` (verify baseline vs `applied.files()`) → закоммитить `applied.files()` и вернуть `DecomposeResult.proposal` + `ChangeResult` + `applied.notes()`; `FixNotApplicableException` → 422 с текстом. Контракт уже есть (`DecomposeRequest.apply`), новых полей не нужно. Библиотечная часть готова (PR #44). | Роль 4 | Открыт (P1) |
 | Роль 2 | (опц., P2) `POST /api/projects/{id}/advice` с `{findingId}`: `ClaudeAdvisor.fromEnvironment().advise(...)` по коду метода/фрагмента находки; без `ANTHROPIC_API_KEY` — `enabled=false` → 204; применение совета — только через quality gate (как `/fixes`). Заодно `ANTHROPIC_API_KEY=` в `.env.example` (опц.). Контракт — зона роли 4. | Роль 4 | Открыт (P2) |
 | Роль 2 | (опц., P1) `POST /api/projects/{id}/complexity` с `{version, nodeIds}`: `new MetricsCalculator().complexityOf(session.model(), nodeIds).toString()` → `{current}` для выделенных блоков блок-схемы (фронт уже умеет выделять блоки для `graph/ops`). Библиотечная часть готова (PR #37). Контракт — зона роли 4. | Роль 4 | Открыт (P1) |
-| Роль 4 | Обзорный граф пропускает члены класса: `static`/instance-блоки инициализации (`InitializerDeclaration`), компактный конструктор record (`CompactConstructorDeclaration`), компоненты record, константы enum (с телами). Код сохраняется, но в графе их нет — в `docs/scope.md` отмечено 🟡. | Роль 1 | Сделано — PR #46 (компоненты record — пока нет) |
 
 ## Журнал интеграций
 | Когда | Результат | Что сломалось |
