@@ -1,5 +1,6 @@
 package io.blueprints.core;
 
+import io.blueprints.core.fuzz.FuzzHarness;
 import io.blueprints.core.graph.DefaultGraphBuilder;
 import io.blueprints.core.graph.Graph;
 import io.blueprints.core.graph.GraphEdge;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
 
 import java.io.IOException;
+import java.io.StringWriter;
 import java.io.UncheckedIOException;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
@@ -28,6 +30,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Stream;
+
+import javax.tools.ToolProvider;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -82,8 +86,32 @@ class CorpusRoundTripTest {
                     .forEach(b -> raw.merge(firstWord(b.code()), 1, Integer::sum));
             checkInsertAtStart(files, n);
         }
-        System.out.printf("[corpus] %s: %d файлов, %d узлов обзора, %d методов, raw: %s%n",
-                dir.getFileName(), files.size(), overview.nodes().size(), methods, raw.isEmpty() ? "нет" : raw);
+        FuzzHarness.Scan fuzz = FuzzHarness.scan(model);
+        assertHarnessCompiles(files, FuzzHarness.generate(fuzz.targets(), 5));
+        System.out.printf("[corpus] %s: %d файлов, %d узлов обзора, %d методов, raw: %s, фаззинг: %d методов (пропущено %d)%n",
+                dir.getFileName(), files.size(), overview.nodes().size(), methods, raw.isEmpty() ? "нет" : raw,
+                fuzz.targets().size(), fuzz.skipped().size());
+    }
+
+    /** Обвязка фаззинга компилируется вместе с примером (запуск и сравнение — FuzzHarnessTest и /verify). */
+    private static void assertHarnessCompiles(List<SourceFile> files, FuzzHarness.Harness harness) throws IOException {
+        Path dir = Files.createTempDirectory("fuzz-compile");
+        List<String> args = new ArrayList<>(List.of("-d", dir.toString(), "-encoding", "UTF-8", "-proc:none"));
+        List<SourceFile> all = new ArrayList<>(files);
+        all.add(harness.file());
+        for (SourceFile f : all) {
+            Path p = dir.resolve("src").resolve(f.path());
+            Files.createDirectories(p.getParent());
+            Files.writeString(p, f.content(), StandardCharsets.UTF_8);
+            args.add(p.toString());
+        }
+        StringWriter err = new StringWriter();
+        boolean ok = ToolProvider.getSystemJavaCompiler()
+                .getTask(err, null, null, args.subList(0, 5), null,
+                        ToolProvider.getSystemJavaCompiler().getStandardFileManager(null, null, StandardCharsets.UTF_8)
+                                .getJavaFileObjectsFromStrings(args.subList(5, args.size())))
+                .call();
+        assertThat(ok).as("обвязка фаззинга компилируется:\n" + err).isTrue();
     }
 
     /**
