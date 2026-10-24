@@ -1,6 +1,8 @@
 package io.blueprints.runner;
 
+import io.blueprints.runner.RunModels.RunBatchResult;
 import io.blueprints.runner.RunModels.RunResult;
+import io.blueprints.runner.RunModels.RunnerBatchRequest;
 import io.blueprints.runner.RunModels.RunnerRequest;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -20,5 +22,10 @@ public class RunController {
     @PostMapping("/internal/run")
     public RunResult run(@RequestBody RunnerRequest request) throws IOException, InterruptedException {
         return sandbox.run(request);
+    }
+
+    @PostMapping("/internal/run-batch")
+    public RunBatchResult runBatch(@RequestBody RunnerBatchRequest request) throws IOException, InterruptedException {
+        return sandbox.runBatch(request);
     }
 }
