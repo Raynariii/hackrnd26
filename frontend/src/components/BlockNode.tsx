@@ -2,16 +2,28 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import type { Finding, GraphNode } from '../api/types';
 import { HANDLE, frameTitle, nodeShape, nodeSize, type Shape, type Size } from '../flow/methodFlow';
 
+/**
+ * Цвет вида узла — «карандаш» на чертеже: ветвления охрой, циклы бирюзой, исключения красным, остальное графитом.
+ * Вид и так различает форма блока, цвет лишь выделяет управляющие конструкции. Значения — токены styles.css.
+ */
+const INK = '#18202b';
+const INK_2 = '#465163';
+const MUTED = '#667085';
+const BRANCH = '#8a5300';
+const LOOP = '#0b6b6b';
+const ERROR = '#b42318';
+
 export const KIND_COLORS: Partial<Record<GraphNode['kind'], string>> = {
-  class: '#64748b', interface: '#64748b', enum: '#64748b', record: '#64748b',
-  method: '#8b5cf6', constructor: '#8b5cf6', field: '#0ea5e9',
-  start: '#8b5cf6', end: '#8b5cf6', variable: '#3b82f6', condition: '#f59e0b', loop: '#a855f7',
-  call: '#06b6d4', operation: '#3b82f6', return: '#22c55e', throw: '#ef4444',
-  try: '#ec4899', catch: '#ec4899', finally: '#ec4899', switch: '#f59e0b', case: '#f59e0b',
-  break: '#94a3b8', continue: '#94a3b8', raw: '#6b7280',
+  class: INK_2, interface: INK_2, enum: INK_2, record: INK_2,
+  method: INK, constructor: INK, field: MUTED,
+  start: INK, end: INK, variable: INK_2, operation: INK_2, call: INK_2, return: INK,
+  condition: BRANCH, switch: BRANCH, case: BRANCH,
+  loop: LOOP, break: MUTED, continue: MUTED,
+  try: ERROR, catch: ERROR, finally: ERROR, throw: ERROR,
+  raw: MUTED,
 };
 
-export const kindColor = (kind: GraphNode['kind']) => KIND_COLORS[kind] ?? '#6b7280';
+export const kindColor = (kind: GraphNode['kind']) => KIND_COLORS[kind] ?? MUTED;
 
 const SEVERITY_ORDER: Finding['severity'][] = ['high', 'medium', 'low'];
 const SEVERITY_LABEL: Record<Finding['severity'], string> = { high: 'высокая', medium: 'средняя', low: 'низкая' };
@@ -30,14 +42,14 @@ function findingsTitle(list: Finding[], count: number): string {
 /** Контур для фигур, которые не рисуются CSS-рамкой: ромб (условие) и шестиугольник (цикл). */
 function ShapeOutline({ shape, size, color }: { shape: Shape; size: Size; color: string }) {
   const { width: w, height: h } = size;
-  const s = 1.5; // отступ под толщину линии
+  const s = 1; // отступ под толщину линии
   const points =
     shape === 'decision'
       ? `${w / 2},${s} ${w - s},${h / 2} ${w / 2},${h - s} ${s},${h / 2}`
       : `${h / 2},${s} ${w - h / 2},${s} ${w - s},${h / 2} ${w - h / 2},${h - s} ${h / 2},${h - s} ${s},${h / 2}`;
   return (
     <svg className="block-outline" width={w} height={h} aria-hidden>
-      <polygon points={points} fill="var(--panel)" stroke={color} strokeWidth={1.5} />
+      <polygon points={points} fill="var(--sheet)" stroke={color} strokeWidth={1} />
     </svg>
   );
 }

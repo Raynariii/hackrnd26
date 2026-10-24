@@ -305,34 +305,45 @@ export function App() {
   return (
     <div className="app">
       <header className="toolbar">
-        <strong>Визуальная среда программирования</strong>
-        <label className="button">
-          Импорт Java
-          <input type="file" accept=".java" multiple hidden onChange={(e) => importFiles(e.target.files)} />
-        </label>
-        <button disabled={!project} onClick={applySource}>Применить код</button>
-        <button disabled={!project} onClick={() => project && guard(async () => {
-          const ov = await api.getGraph(project.id);
-          setOverview(ov);
-          showGraph(ov);
-        })}>Обзор</button>
-        <button disabled={!project || running} onClick={runProgram}>{running ? 'Запуск…' : '▶ Запуск'}</button>
-        <button disabled={!project || verifying} onClick={runVerify}>{verifying ? 'Проверяем…' : 'Проверить'}</button>
-        <button disabled={!project || exporting} onClick={exportProject}
-          title="Zip: текущий код, JUnit-тесты против версии 1 (golden master) и отчёт проверки; запуск — mvn test">
-          {exporting ? 'Готовим архив…' : '⬇ Экспорт с тестами'}
-        </button>
-        {project && <span className="muted">v{project.version}</span>}
+        <div className="brand">
+          <span className="brand-name">Java Blueprints</span>
+          {project && activeFile && <span className="brand-file" title={activeFile}>{activeFile}</span>}
+          {project && <span className="muted" title="Версия проекта: каждая правка — новая версия, v1 — эталон поведения">v{project.version}</span>}
+        </div>
+        <div className="toolbar-group">
+          <label className="button">
+            Импорт Java
+            <input type="file" accept=".java" multiple hidden onChange={(e) => importFiles(e.target.files)} />
+          </label>
+          <button disabled={!project} onClick={applySource} title="Перестроить граф и диагностику по коду из редактора">Применить код</button>
+          <button disabled={!project} onClick={() => project && guard(async () => {
+            const ov = await api.getGraph(project.id);
+            setOverview(ov);
+            showGraph(ov);
+          })}>Обзор</button>
+        </div>
+        <div className="toolbar-group">
+          <button disabled={!project || running} onClick={runProgram}>{running ? 'Запуск…' : 'Запуск'}</button>
+          <button className="primary" disabled={!project || verifying} onClick={runVerify}
+            title="Дифф-тесты: версия 1 против текущей на одних входах, плюс замер времени">
+            {verifying ? 'Проверяем…' : 'Проверить поведение'}
+          </button>
+        </div>
+        <div className="toolbar-spacer" />
+        {error && <span className="error" title={error}>{error}</span>}
         {exported && (
           <span className={`export-note ${exported.preserved === false ? 'fail' : 'muted'}`} title={exported.fileName}>
-            ⬇ {exported.fileName}{exported.summary && ` · ${exported.summary}`}
+            {exported.fileName}{exported.summary && `, ${exported.summary}`}
           </span>
         )}
-        {error && <span className="error">{error}</span>}
+        <button disabled={!project || exporting} onClick={exportProject}
+          title="Zip: текущий код, JUnit-тесты против версии 1 (golden master) и отчёт проверки; запуск — mvn test">
+          {exporting ? 'Готовим архив…' : 'Экспорт с тестами'}
+        </button>
       </header>
 
       <aside className="sidebar">
-        <h3>Проект</h3>
+        <h3>Файлы</h3>
         {project?.files.map((f) => (
           <div key={f.path} className={`file ${f.path === activeFile ? 'active' : ''}`}
                onClick={() => { setActiveFile(f.path); setDraft(f.content); }}>

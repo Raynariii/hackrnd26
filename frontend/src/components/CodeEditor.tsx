@@ -45,7 +45,26 @@ export function CodeEditor({ value, highlight, onChange, onCursorLine }: Props) 
   return (
     <Editor
       language="java"
-      theme="vs-dark"
+      theme="blueprints"
+      beforeMount={(monaco) => {
+        // Лист как у холста: белый фон, графитовый текст, кобальтовое выделение; цвета синтаксиса — светлой темы vs.
+        monaco.editor.defineTheme('blueprints', {
+          base: 'vs',
+          inherit: true,
+          rules: [{ token: 'comment', foreground: '6b7584', fontStyle: 'italic' }],
+          colors: {
+            'editor.background': '#ffffff',
+            'editor.foreground': '#18202b',
+            'editor.lineHighlightBackground': '#f5f6f8',
+            'editor.lineHighlightBorder': '#00000000',
+            'editorLineNumber.foreground': '#a3abb7',
+            'editorLineNumber.activeForeground': '#465163',
+            'editor.selectionBackground': '#d6e0f3',
+            'editorIndentGuide.background1': '#eef0f4',
+            'editorCursor.foreground': '#2350a8',
+          },
+        });
+      }}
       value={value}
       onMount={(editor) => {
         editorRef.current = editor;
@@ -55,7 +74,7 @@ export function CodeEditor({ value, highlight, onChange, onCursorLine }: Props) 
         });
       }}
       onChange={(v) => onChange(v ?? '')}
-      options={{ minimap: { enabled: false }, fontSize: 13, automaticLayout: true }}
+      options={{ minimap: { enabled: false }, fontSize: 13, lineHeight: 20, fontFamily: "'JetBrains Mono', ui-monospace, monospace", automaticLayout: true, padding: { top: 12 }, renderLineHighlight: 'line', scrollBeyondLastLine: false }}
     />
   );
 }

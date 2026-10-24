@@ -5,14 +5,15 @@ import { buildFlowModel, collectBoxes, toElkGraph, type EdgeTone, type ElkNodeLi
 
 const elk = new ELK();
 
+/** Рёбра — графит; «Нет» — охрой ветвления, возврат к циклу — бирюзой, исключение — красным (как в BlockNode). */
 const EDGE_COLORS: Record<EdgeTone, string> = {
-  yes: '#22c55e',
-  no: '#ef4444',
-  back: '#a855f7',
-  exception: '#ec4899',
-  call: '#94a3b8',
-  contains: '#475569',
-  default: '#94a3b8',
+  yes: '#465163',
+  no: '#8a5300',
+  back: '#0b6b6b',
+  exception: '#b42318',
+  call: '#7d8796',
+  contains: '#c5ccd6',
+  default: '#465163',
 };
 
 /**
@@ -64,14 +65,14 @@ export async function layoutGraph(graph: Graph): Promise<{ nodes: Node[]; edges:
       className: `edge-${fe.tone}`,
       style: {
         stroke: color,
-        strokeWidth: 1.5,
+        strokeWidth: 1.25,
         ...(fe.back || fe.tone === 'call' ? { strokeDasharray: '6 4' } : {}),
-        ...(floating ? { opacity: 0.35 } : {}),
+        ...(floating ? { opacity: 0.45 } : {}),
       },
-      labelStyle: { fill: color, fontWeight: 600, fontSize: 11 },
-      labelBgStyle: { fill: '#0b1220' },
+      labelStyle: { fill: color, fontWeight: 500, fontSize: 11 },
+      labelBgStyle: { fill: '#ffffff' },
       labelBgPadding: [4, 2] as [number, number],
-      markerEnd: fe.tone === 'contains' ? undefined : { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
+      markerEnd: fe.tone === 'contains' ? undefined : { type: MarkerType.ArrowClosed, color, width: 14, height: 14 },
       // Небольшой отступ поворота: при коротком зазоре стандартные 20px закручивают стрелку в петлю.
       pathOptions: { offset: 10, borderRadius: 6 },
       zIndex: 1,

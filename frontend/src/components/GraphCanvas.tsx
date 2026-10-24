@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Background, Controls, MiniMap, ReactFlow, useEdgesState, useNodesState, useReactFlow, type Edge, type Node, type NodeChange } from '@xyflow/react';
+import { Background, BackgroundVariant, Controls, MiniMap, ReactFlow, useEdgesState, useNodesInitialized, useNodesState, useReactFlow, useStore, type Edge, type Node, type NodeChange } from '@xyflow/react';
 import type { Finding, Graph, GraphNode } from '../api/types';
 import { BlockNode, FrameNode, kindColor } from './BlockNode';
 import { layoutGraph } from './layout';
@@ -41,6 +41,37 @@ function FocusNode({ focus }: { focus: Props['focus'] }) {
     center();
     return () => cancelAnimationFrame(frame);
   }, [focus, flow]);
+  return null;
+}
+
+/** Ниже этого масштаба код в блоках (11px) не читается — ни на ноутбуке, ни на проекторе. */
+const READABLE_ZOOM = 0.75;
+const PAD = 32;
+
+/**
+ * Начальный вид: граф целиком, если при этом он читается; иначе — читаемый масштаб и начало графа у верхнего края
+ * (длинная блок-схема открывается со «Старта», остальное — прокруткой и мини-картой). Один раз на раскладку.
+ */
+function ReadableFit() {
+  const flow = useReactFlow();
+  const ready = useNodesInitialized();
+  const width = useStore((s) => s.width);
+  const height = useStore((s) => s.height);
+  const [done, setDone] = useState(false);
+  useEffect(() => {
+    if (!ready || done || !width || !height) return;
+    const b = flow.getNodesBounds(flow.getNodes());
+    if (!b.width || !b.height) return;
+    const fit = Math.min((width - 2 * PAD) / b.width, (height - 2 * PAD) / b.height, 1);
+    if (fit >= READABLE_ZOOM) {
+      void flow.fitView({ padding: 0.06, maxZoom: 1 });
+    } else {
+      const z = READABLE_ZOOM;
+      const x = b.width * z <= width - 2 * PAD ? width / 2 - (b.x + b.width / 2) * z : PAD - b.x * z;
+      void flow.setViewport({ x, y: PAD - b.y * z, zoom: z });
+    }
+    setDone(true);
+  }, [ready, done, width, height, flow]);
   return null;
 }
 
@@ -96,7 +127,7 @@ export function GraphCanvas({ graph, selectedIds, onSelect, onOpenMethod, focus,
         const data = e.data as { floating?: boolean } | undefined;
         if (!data?.floating) return e;
         const hot = selected.has(e.source) || selected.has(e.target);
-        const opacity = hot ? 1 : selected.size ? 0.12 : 0.35;
+        const opacity = hot ? 1 : selected.size ? 0.12 : 0.45;
         return e.style?.opacity === opacity ? e : { ...e, zIndex: hot ? 5 : 1, animated: hot, style: { ...e.style, opacity } };
       }),
     );
@@ -120,6 +151,7 @@ export function GraphCanvas({ graph, selectedIds, onSelect, onOpenMethod, focus,
   return (
     <ReactFlow
       key={rev}
+      className={`level-${graph?.level ?? 'method'}`}
       nodes={nodes}
       edges={edges}
       // Выделение — только из App и только через data.selected: собственный выбор React Flow выключен,
@@ -134,20 +166,28 @@ export function GraphCanvas({ graph, selectedIds, onSelect, onOpenMethod, focus,
         const node = nodeOf(n);
         if (node.kind === 'method' || node.kind === 'constructor') onOpenMethod(node);
       }}
-      fitView
       minZoom={0.1}
-      colorMode="dark"
+      colorMode="light"
+      proOptions={{ hideAttribution: false }}
     >
-      <Background />
-      <Controls />
+      {/* Миллиметровка: мелкая клетка 16px и крупная 80px. */}
+      <Background id="minor" variant={BackgroundVariant.Lines} gap={16} color="var(--grid)" lineWidth={1} />
+      <Background id="major" variant={BackgroundVariant.Lines} gap={80} color="var(--grid-major)" lineWidth={1} />
+      <Controls showInteractive={false} />
       <MiniMap
         pannable
         zoomable
+        bgColor="var(--sheet)"
+        maskColor="rgba(245, 246, 248, 0.75)"
+        maskStrokeColor="var(--accent)"
+        maskStrokeWidth={1}
         // Рамки групп на мини-карте — только контур, иначе они закрашивают блоки внутри.
         nodeColor={(n) => (n.type === 'frame' ? 'transparent' : kindColor(nodeOf(n).kind))}
-        nodeStrokeColor={(n) => (n.type === 'frame' ? kindColor(nodeOf(n).kind) : 'transparent')}
-        nodeStrokeWidth={3}
+        nodeStrokeColor={(n) => (n.type === 'frame' ? 'var(--rule-strong)' : 'transparent')}
+        nodeStrokeWidth={2}
+        nodeBorderRadius={2}
       />
+      <ReadableFit />
       <FocusNode focus={focus} />
     </ReactFlow>
   );

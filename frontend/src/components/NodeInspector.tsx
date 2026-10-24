@@ -128,7 +128,7 @@ export function NodeInspector({ selection, graph, onOp }: Props) {
           <label className="muted">
             {['start', 'case', 'catch', 'finally'].includes(node.kind) ? 'Вставится в начало тела'
               : ['loop', 'condition', 'try', 'switch'].includes(node.kind) ? 'Вставится после всей конструкции' : 'Вставится следующим оператором'}
-            {insertKind.optionalCode && ' · код можно не вводить'}
+            {insertKind.optionalCode && '; код можно не вводить'}
           </label>
         </>,
         'Вставить', !!insertKind.optionalCode || !!code.trim(), () => ({ op: 'insertAfter', nodeId: node.id, kind, code: code.trim() }))}

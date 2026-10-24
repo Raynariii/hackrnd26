@@ -60,18 +60,20 @@ function FindingCard({ f, onSelect, onFix }: { f: Finding; onSelect: Props['onSe
         <span className="badge">{SEVERITY[f.severity]}</span>
         <span className="muted">{f.file}:{f.startLine}</span>
       </div>
-      <div>{f.explanation}</div>
+      <div className="finding-text">{f.explanation}</div>
       {f.complexity && (
         <div className="complexity">
-          {f.complexity.current}
-          {f.complexity.after && <> → <b>{f.complexity.after}</b></>}
-          {f.expectedEffect && <span className="muted"> · {f.expectedEffect}</span>}
+          <span className="complexity-change">
+            {f.complexity.current}
+            {f.complexity.after && <> → <b>{f.complexity.after}</b></>}
+          </span>
+          {f.expectedEffect && <span className="complexity-effect">{f.expectedEffect}</span>}
         </div>
       )}
       {f.fix && (
         <div className="finding-fix" onClick={(e) => e.stopPropagation()}>
           {f.fix.autoApplicable ? (
-            <button className="primary" disabled={busy} onClick={fix} title={f.fix.description}>
+            <button disabled={busy} onClick={fix} title={f.fix.description}>
               {busy ? 'Исправляем…' : 'Исправить автоматически'}
             </button>
           ) : (
