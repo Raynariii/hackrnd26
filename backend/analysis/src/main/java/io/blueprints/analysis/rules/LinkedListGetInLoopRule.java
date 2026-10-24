@@ -7,7 +7,6 @@ import io.blueprints.analysis.Complexity;
 import io.blueprints.analysis.CostModel;
 import io.blueprints.analysis.Finding;
 import io.blueprints.analysis.Fix;
-import io.blueprints.analysis.FixSafety;
 import io.blueprints.analysis.Findings;
 import io.blueprints.analysis.Rule;
 import io.blueprints.analysis.Severity;
@@ -56,7 +55,6 @@ public final class LinkedListGetInLoopRule implements Rule {
         BigO after = BigO.of(depth);
         String receiver = call.getScope().map(Object::toString).orElse("list");
         String preview = "for (T item : " + receiver + ") {\n    // вместо " + receiver + ".get(i)\n}";
-        String notApplicable = FixSafety.explain(RULE, call);
         return Findings.of(model, RULE, Severity.HIGH,
                 "LinkedList.get(i) в цикле — O(n²)",
                 "У LinkedList доступ по индексу идёт от головы списка и стоит O(n). В цикле это " + current
@@ -64,8 +62,8 @@ public final class LinkedListGetInLoopRule implements Rule {
                 call, List.of(call),
                 new Complexity(current.toString(), after.toString()),
                 new Fix("iterator",
-                        notApplicable != null ? notApplicable : "Заменить обращение по индексу на обход Iterator/for-each",
-                        preview, notApplicable == null),
+                        "Заменить обращение по индексу на обход Iterator/for-each",
+                        preview, false),
                 "Убирает проход по списку на каждой итерации: " + current + " → " + after);
     }
 }

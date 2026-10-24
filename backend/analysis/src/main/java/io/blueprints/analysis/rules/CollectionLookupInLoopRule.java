@@ -8,7 +8,6 @@ import io.blueprints.analysis.Complexity;
 import io.blueprints.analysis.CostModel;
 import io.blueprints.analysis.Finding;
 import io.blueprints.analysis.Fix;
-import io.blueprints.analysis.FixSafety;
 import io.blueprints.analysis.Findings;
 import io.blueprints.analysis.Rule;
 import io.blueprints.analysis.Severity;
@@ -62,17 +61,15 @@ public final class CollectionLookupInLoopRule implements Rule {
         String receiver = call.getScope().map(Node::toString).orElse("список");
         String preview = "Set<T> index = new HashSet<>(" + receiver + ");\n"
                 + "if (index.contains(x)) { ... }";
-        String notApplicable = FixSafety.explain(RULE, call);
-        return Findings.of(model, RULE, Severity.HIGH,
-                "Поиск по списку внутри цикла — O(n²)",
+        return Findings.of(model, RULE, Severity.HIGH,                "Поиск по списку внутри цикла — O(n²)",
                 call.getNameAsString() + "() по списку перебирает элементы: внутри цикла это " + current
                         + ". Индекс в HashSet/HashMap заменяет перебор на O(1), и весь метод становится "
                         + after + ".",
                 call, List.of(call),
                 new Complexity(current.toString(), after.toString()),
                 new Fix("index-by-key",
-                        notApplicable != null ? notApplicable : "Построить HashSet/HashMap по коллекции и искать по ключу",
-                        preview, notApplicable == null),
+                        "Построить HashSet/HashMap по коллекции и искать по ключу",
+                        preview, false),
                 "Убирает линейный поиск на каждой итерации: " + current + " → " + after);
     }
 }

@@ -14,7 +14,6 @@ import io.blueprints.analysis.Complexity;
 import io.blueprints.analysis.CostModel;
 import io.blueprints.analysis.Finding;
 import io.blueprints.analysis.Fix;
-import io.blueprints.analysis.FixSafety;
 import io.blueprints.analysis.Findings;
 import io.blueprints.analysis.Rule;
 import io.blueprints.analysis.Severity;
@@ -107,7 +106,6 @@ public final class StringConcatInLoopRule implements Rule {
                 + "// внутри цикла\n"
                 + variable + "Builder.append(expr);\n"
                 + "String " + variable + " = " + variable + "Builder.toString();";
-        String notApplicable = FixSafety.explain(RULE, assign);
         return Findings.of(model, RULE, Severity.HIGH,
                 "Конкатенация строк в цикле — O(n²)",
                 "Переменная " + variable + " типа String накапливается через +=: каждая итерация копирует "
@@ -116,8 +114,8 @@ public final class StringConcatInLoopRule implements Rule {
                 assign, List.of(assign),
                 new Complexity(current.toString(), after.toString()),
                 new Fix("string-builder",
-                        notApplicable != null ? notApplicable : "Заменить конкатенацию на StringBuilder",
-                        preview, notApplicable == null),
+                        "Заменить конкатенацию на StringBuilder",
+                        preview, false),
                 "Убирает копирование строки на каждой итерации: " + current + " → " + after);
     }
 }
