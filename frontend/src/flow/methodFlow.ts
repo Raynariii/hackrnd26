@@ -13,8 +13,9 @@ const SIZES = new Map<NodeKind, Size>([
   ['start', { width: 240, height: 52 }],
   ['end', { width: 160, height: 44 }],
   ['return', { width: 240, height: 52 }],
-  ['break', { width: 160, height: 44 }],
-  ['continue', { width: 160, height: 44 }],
+  // «Следующая итерация» / «Выход (break)» + метка — шире конца метода
+  ['break', { width: 220, height: 48 }],
+  ['continue', { width: 220, height: 48 }],
   ['condition', { width: 280, height: 104 }],
   ['switch', { width: 280, height: 104 }],
   ['loop', { width: 280, height: 72 }],

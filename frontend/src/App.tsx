@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiRequestError } from './api/client';
 import type { Diagnostics, Finding, Graph, GraphNode, ProjectState, RunResult, SourceRange, VerifyReport } from './api/types';
 import { AnalysisPanel } from './components/AnalysisPanel';
 import { BottomPanel } from './components/BottomPanel';
 import { CodeEditor } from './components/CodeEditor';
 import { GraphCanvas } from './components/GraphCanvas';
-import { nodeAtLine, nodeForFinding } from './flow/sourceMap';
+import { findingsByNode, nodeAtLine, nodeForFinding } from './flow/sourceMap';
 
 export function App() {
   const [project, setProject] = useState<ProjectState | null>(null);
@@ -20,6 +20,11 @@ export function App() {
   const [run, setRun] = useState<RunResult | null>(null);
   const [verify, setVerify] = useState<VerifyReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const nodeFindings = useMemo(
+    () => (graph && diagnostics ? findingsByNode(graph, diagnostics.findings) : undefined),
+    [graph, diagnostics],
+  );
 
   const guard = useCallback(async (action: () => Promise<void>) => {
     try {
@@ -138,6 +143,7 @@ export function App() {
             onSelect={selectNode}
             onOpenMethod={(node) => project && guard(async () => showGraph(await api.getGraph(project.id, 'method', node.id)))}
             focus={focus}
+            findings={nodeFindings}
           />
         ) : (
           <div className="empty">Импортируйте .java-файл, чтобы построить граф</div>

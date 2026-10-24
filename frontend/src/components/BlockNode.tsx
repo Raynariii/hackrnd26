@@ -1,5 +1,5 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import type { GraphNode } from '../api/types';
+import type { Finding, GraphNode } from '../api/types';
 import { HANDLE, frameTitle, nodeShape, nodeSize, type Shape, type Size } from '../flow/methodFlow';
 
 export const KIND_COLORS: Partial<Record<GraphNode['kind'], string>> = {
@@ -12,6 +12,20 @@ export const KIND_COLORS: Partial<Record<GraphNode['kind'], string>> = {
 };
 
 export const kindColor = (kind: GraphNode['kind']) => KIND_COLORS[kind] ?? '#6b7280';
+
+const SEVERITY_ORDER: Finding['severity'][] = ['high', 'medium', 'low'];
+const SEVERITY_LABEL: Record<Finding['severity'], string> = { high: 'высокая', medium: 'средняя', low: 'низкая' };
+
+function worstSeverity(list: Finding[]): Finding['severity'] {
+  return SEVERITY_ORDER.find((s) => list.some((f) => f.severity === s)) ?? 'high';
+}
+
+function findingsTitle(list: Finding[], count: number): string {
+  if (!list.length) return `Проблем: ${count}`;
+  return list
+    .map((f) => `• ${f.title} (${SEVERITY_LABEL[f.severity]}${f.complexity ? `, ${f.complexity.current}` : ''})`)
+    .join('\n');
+}
 
 /** Контур для фигур, которые не рисуются CSS-рамкой: ромб (условие) и шестиугольник (цикл). */
 function ShapeOutline({ shape, size, color }: { shape: Shape; size: Size; color: string }) {
@@ -29,11 +43,13 @@ function ShapeOutline({ shape, size, color }: { shape: Shape; size: Size; color:
 }
 
 export function BlockNode({ data, selected }: NodeProps) {
-  const { node, size: given } = data as { node: GraphNode; size?: Size };
+  const { node, size: given, findings: list = [] } = data as { node: GraphNode; size?: Size; findings?: Finding[] };
   const size = given ?? nodeSize(node.kind);
   const shape = nodeShape(node.kind);
   const color = kindColor(node.kind);
-  const findings = node.findings?.length ?? 0;
+  // Находки сопоставляет фронт (id / meta.covers); node.findings ядро не заполняет — он только запасной вариант.
+  const findings = list.length || (node.findings?.length ?? 0);
+  const severity = worstSeverity(list);
   const outlined = shape === 'decision' || shape === 'loop';
 
   return (
@@ -50,7 +66,9 @@ export function BlockNode({ data, selected }: NodeProps) {
         <div className="block-title" style={{ color }}>
           {node.label}
           {findings > 0 && (
-            <span className="block-warning" title={`Проблем: ${findings}`}>!</span>
+            <span className={`block-warning sev-${severity}`} title={findingsTitle(list, findings)}>
+              {findings > 1 ? findings : '!'}
+            </span>
           )}
         </div>
         {node.code && <div className="block-code">{node.code}</div>}

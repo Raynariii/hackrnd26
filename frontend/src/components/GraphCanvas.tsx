@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Background, Controls, MiniMap, ReactFlow, useEdgesState, useNodesState, useReactFlow, type Edge, type Node } from '@xyflow/react';
-import type { Graph, GraphNode } from '../api/types';
+import type { Finding, Graph, GraphNode } from '../api/types';
 import { BlockNode, FrameNode, kindColor } from './BlockNode';
 import { layoutGraph } from './layout';
 
@@ -13,6 +13,8 @@ interface Props {
   onOpenMethod: (node: GraphNode) => void;
   /** Показать узел на холсте (выбор пришёл из кода или из списка проблем). seq — чтобы повторный запрос тоже срабатывал. */
   focus?: { id: string; seq: number } | null;
+  /** Находки анализатора, разложенные по блокам текущего графа (sourceMap.findingsByNode). */
+  findings?: Map<string, Finding[]>;
 }
 
 /** Плавно центрирует холст на узле, сохраняя масштаб. Рендерится внутри ReactFlow ради useReactFlow. */
@@ -40,9 +42,11 @@ function FocusNode({ focus }: { focus: Props['focus'] }) {
   return null;
 }
 
+const NO_FINDINGS: Finding[] = [];
+
 const nodeOf = (n: Node) => (n.data as { node: GraphNode }).node;
 
-export function GraphCanvas({ graph, selectedId, onSelect, onOpenMethod, focus }: Props) {
+export function GraphCanvas({ graph, selectedId, onSelect, onOpenMethod, focus, findings }: Props) {
   // Узлы живут в состоянии и принимают изменения от React Flow (размеры, выделение). Если отдавать новые
   // объекты на каждый рендер без onNodesChange, React Flow теряет замеры и на кадр прячет узлы —
   // второй клик двойного клика уходит в пустой холст, и метод не открывается.
@@ -79,6 +83,18 @@ export function GraphCanvas({ graph, selectedId, onSelect, onOpenMethod, focus }
     );
   }, [selectedId, rev, setNodes]);
 
+  // Маркеры находок: диагностика приходит отдельным запросом, раскладку из-за неё не пересчитываем.
+  useEffect(() => {
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (n.type !== 'block') return n;
+        const list = findings?.get(n.id) ?? NO_FINDINGS;
+        const data = n.data as { findings?: Finding[] };
+        return (data.findings ?? NO_FINDINGS) === list ? n : { ...n, data: { ...n.data, findings: list } };
+      }),
+    );
+  }, [findings, rev, setNodes]);
+
   if (error) return <div className="empty error">{error}</div>;
   if (rev === 0) return <div className="empty">Раскладываем граф…</div>;
 
@@ -102,7 +118,14 @@ export function GraphCanvas({ graph, selectedId, onSelect, onOpenMethod, focus }
     >
       <Background />
       <Controls />
-      <MiniMap pannable zoomable nodeColor={(n) => kindColor(nodeOf(n).kind)} />
+      <MiniMap
+        pannable
+        zoomable
+        // Рамки групп на мини-карте — только контур, иначе они закрашивают блоки внутри.
+        nodeColor={(n) => (n.type === 'frame' ? 'transparent' : kindColor(nodeOf(n).kind))}
+        nodeStrokeColor={(n) => (n.type === 'frame' ? kindColor(nodeOf(n).kind) : 'transparent')}
+        nodeStrokeWidth={3}
+      />
       <FocusNode focus={focus} />
     </ReactFlow>
   );
