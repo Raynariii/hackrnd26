@@ -21,6 +21,7 @@ public final class Rules {
     public static List<Rule> defaultRules() {
         return List.of(
                 new NestedLoopSameCollectionRule(),
+                new NestedLoopLinearSearchRule(),
                 new CollectionLookupInLoopRule(),
                 new StringConcatInLoopRule(),
                 new LinkedListGetInLoopRule(),
@@ -29,6 +30,9 @@ public final class Rules {
                 new DuplicateCodeRule(5),
                 new EmptyCatchRule(),
                 new MagicNumberRule(),
-                new GodClassRule(20, 15, 400));
+                new GodClassRule(20, 15, 400),
+                new RegexCompileInLoopRule(),
+                new StringFormatInLoopRule(),
+                new ExponentialRecursionRule());
     }
 }

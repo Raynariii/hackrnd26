@@ -19,7 +19,8 @@ public final class Fixers {
             new CollectionLookupFix(),
             new StringConcatFix(),
             new MagicNumberFix(),
-            new LinkedListIndexFix());
+            new LinkedListIndexFix(),
+            new NestedLoopIndexFix());
 
     private Fixers() {
     }

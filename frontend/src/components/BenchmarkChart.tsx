@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import type { BenchPoint } from '../flow/verify';
 
-// Две серии: «до» (эталон, версия 1) и «после» (текущая). Цвета — категориальные слоты 2 и 1 тёмной темы,
-// проверены validate_palette.js на фоне --panel (#111a2e). «До» ещё и пунктиром — не только цветом.
+// Две серии: «до» (эталон, версия 1) и «после» (текущая). Цвета — категориальные слоты 2 и 1 светлой темы,
+// проверены validate_palette.js на фоне --sheet (#ffffff), все проверки PASS. «До» ещё и пунктиром — не только цветом.
 const SERIES = [
   { key: 'baselineMs' as const, name: 'до', color: 'var(--series-before)', dash: '6 4' },
   { key: 'currentMs' as const, name: 'после', color: 'var(--series-after)', dash: undefined },

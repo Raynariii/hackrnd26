@@ -22,8 +22,8 @@ import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.NodeList;
 import com.github.javaparser.ast.body.BodyDeclaration;
 import com.github.javaparser.ast.body.CallableDeclaration;
-import com.github.javaparser.ast.body.ConstructorDeclaration;
-import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.body.CompactConstructorDeclaration;
+import com.github.javaparser.ast.body.InitializerDeclaration;
 import com.github.javaparser.ast.comments.Comment;
 import com.github.javaparser.ast.stmt.BlockStmt;
 import com.github.javaparser.ast.stmt.CatchClause;
@@ -40,6 +40,7 @@ import com.github.javaparser.ast.stmt.ThrowStmt;
 import com.github.javaparser.ast.stmt.TryStmt;
 import com.github.javaparser.ast.stmt.WhileStmt;
 import com.github.javaparser.printer.lexicalpreservation.LexicalPreservingPrinter;
+import io.blueprints.core.graph.Members;
 import io.blueprints.core.graph.NodeKind;
 import io.blueprints.core.model.JavaProjectParser;
 import io.blueprints.core.model.ProjectModel;
@@ -289,7 +290,7 @@ public final class DefaultGraphOperations implements GraphOperations {
     private void insertStatements(SourceText st, Target target, String code) {
         Node node = target.node();
         if (target.anchor() == Anchor.START) {
-            insertAtStart(st, (CallableDeclaration<?>) node, code);
+            insertAtStart(st, node, code);
         } else if (node instanceof SwitchEntry entry) {
             insertIntoCase(st, entry, code);
         } else if (node instanceof CatchClause c) {
@@ -303,10 +304,9 @@ public final class DefaultGraphOperations implements GraphOperations {
         }
     }
 
-    private void insertAtStart(SourceText st, CallableDeclaration<?> callable, String code) {
-        BlockStmt body = callable instanceof MethodDeclaration m
-                ? m.getBody().orElseThrow(() -> new UnsupportedGraphOpException("У абстрактного метода нет тела"))
-                : ((ConstructorDeclaration) callable).getBody();
+    private void insertAtStart(SourceText st, Node callable, String code) {
+        BlockStmt body = Members.body(callable)
+                .orElseThrow(() -> new UnsupportedGraphOpException("У абстрактного метода нет тела"));
         NodeList<Statement> stmts = body.getStatements();
         // this(...) / super(...) обязаны быть первым оператором конструктора.
         if (!stmts.isEmpty() && stmts.get(0).isExplicitConstructorInvocationStmt()) {
@@ -782,6 +782,9 @@ public final class DefaultGraphOperations implements GraphOperations {
             if (n instanceof CallableDeclaration<?> c) {
                 return c;
             }
+            if (n instanceof InitializerDeclaration || n instanceof CompactConstructorDeclaration) {
+                throw new UnsupportedGraphOpException("Выносить код из инициализатора или компактного конструктора пока нельзя");
+            }
             n = n.getParentNode().orElse(null);
         }
         throw new UnsupportedGraphOpException("Фрагмент вне метода");
@@ -988,7 +991,8 @@ public final class DefaultGraphOperations implements GraphOperations {
             throw new UnsupportedGraphOpException("Узел " + nodeId + " не найден — обновите граф");
         }
         if (anchor != Anchor.NODE) {
-            if (!(node instanceof CallableDeclaration<?>)) {
+            if (!(node instanceof CallableDeclaration<?> || node instanceof InitializerDeclaration
+                    || node instanceof CompactConstructorDeclaration)) {
                 throw new UnsupportedGraphOpException("Узел " + nodeId + " не начало метода");
             }
             return new Target(node, anchor);

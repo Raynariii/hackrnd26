@@ -98,7 +98,7 @@ final class CallGraph {
         return edges;
     }
 
-    /** Член класса, которому принадлежит вызов, — узел обзорного графа (вложенные/анонимные классы — к внешнему). */
+    /** Член, которому принадлежит вызов, — узел обзорного графа (метод анонимного класса — сам по себе). */
     private static Node member(Node node) {
         Node n = node.getParentNode().orElse(null);
         Node found = null;
@@ -113,8 +113,7 @@ final class CallGraph {
     }
 
     private static boolean isOverviewMember(Node n) {
-        return (n instanceof MethodDeclaration || n instanceof ConstructorDeclaration || n instanceof FieldDeclaration)
-                && n.getParentNode().orElse(null) instanceof TypeDeclaration<?>;
+        return Members.isMember(n);
     }
 
     private List<Node> targets(Node call) {
