@@ -24,12 +24,19 @@
 **Блокеры:** —
 
 ## Роль 1 — ядро Java ↔ граф
-- [ ] `methodFlow`: блок-схема метода (variable, condition, loop, call, operation, return, switch/case, break/continue, try/catch/finally, throw)
+- [x] `methodFlow`: блок-схема метода и конструктора (`MethodFlowBuilder`): variable, condition (Да/Нет), loop
+      (for / for-each / while / do-while, `loopBody/loopBack/loopExit`, `while(true)` без выхода), call, operation,
+      return, switch/case (провал без break, стрелочные case, «нет совпадений»), break/continue с метками,
+      try-with-resources/catch/finally, throw. `parent` = контейнер (цикл, ветка условия, case, try, catch, finally).
+      `meta.covers` — id выражений внутри блока: по нему `Finding.nodeIds` привязываются к блокам. 17 тестов (PR — см. ниже)
 - [ ] overview: рёбра `call` (SymbolSolver, с откатом на имена)
-- [ ] узел `raw` для неподдерживаемых конструкций
+- [x] узел `raw` для неподдерживаемых конструкций в блок-схеме (локальные классы, synchronized, yield; сбой разбора
+      оператора откатывается в `raw`, а не роняет граф)
 - [ ] операции: `editNode`, `insertAfter`, `delete`, `move`, `wrapIf`, `wrapLoop`, `extractMethod`
 - [ ] round-trip тест на всём `corpus/`
 - [ ] откат на pretty-print, если LexicalPreservingPrinter падает на правке (G6)
+**Для фронта (роль 3):** находка → блок: блок, у которого `id` или `meta.covers` содержит любой из `Finding.nodeIds`.
+`start` блок-схемы покрывает id метода (находки уровня метода, например long-method).
 **Блокеры:** —
 
 ## Роль 2 — анализ и оптимизация
