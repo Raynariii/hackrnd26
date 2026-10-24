@@ -131,12 +131,6 @@ export interface GraphOpRequest {
   name?: string;
 }
 
-/** Результат правки кода сервером (POST /fixes/{findingId}): новое состояние + unified diff. */
-export interface ChangeResult {
-  state: ProjectState;
-  diff: string;
-}
-
 export interface VerifyRequest {
   /** stdin-входы; если пусто — сервер берёт сохранённые и сгенерированные. */
   inputs?: string[];
@@ -160,4 +154,20 @@ export interface ApiError {
   error: string;
   message: string;
   problems?: Problem[];
+}
+
+/** POST /projects/{id}/fixes/{findingId} — contracts/openapi.yaml → ChangeResult */
+export interface ChangeResult {
+  state: ProjectState;
+  diff: string;
+  description?: string | null;
+  /** Отчёт quality gate: предыдущая версия vs новая */
+  verify?: VerifyReport | null;
+}
+
+/** POST /projects/{id}/decompose — contracts/openapi.yaml → DecomposeResult */
+export interface DecomposeResult {
+  proposal: { className: string; responsibility?: string; members: string[] }[];
+  notes?: string[];
+  result?: ChangeResult | null;
 }
