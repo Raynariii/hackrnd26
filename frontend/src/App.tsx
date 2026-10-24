@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Boxes, ChevronRight, CircleAlert, CircleCheck, CircleX, Download, DraftingCompass, FileCode2, FlaskConical, FolderOpen, Gauge, LayoutGrid, Moon, Play, ShieldCheck, Sun, Terminal, Upload, Workflow, X } from 'lucide-react';
+import { Box, Boxes, ChevronRight, CircleAlert, CircleCheck, CircleX, Download, DraftingCompass, FileCode2, FlaskConical, FolderOpen, Gauge, LayoutGrid, Moon, Play, ShieldCheck, SquareFunction, Sun, Terminal, TriangleAlert, Upload, Workflow, X } from 'lucide-react';
 import { api, ApiRequestError } from './api/client';
 import type { DecomposeResult, Diagnostics, Finding, Graph, GraphNode, GraphOpRequest, ProjectState, RunResult, SourceFile, SourceRange, VerifyReport } from './api/types';
 import { AnalysisPanel, MetricsPanel, type AppliedFix } from './components/AnalysisPanel';
@@ -9,12 +9,15 @@ import { BottomPanel, type BottomTab } from './components/BottomPanel';
 import { CodeEditor } from './components/CodeEditor';
 import { GraphCanvas } from './components/GraphCanvas';
 import { NodeInspector } from './components/NodeInspector';
+import { Explorer } from './components/Explorer';
 import { VerifyScreen } from './components/VerifyScreen';
 import { changedLineNumbers, findMethodAgain, firstChangedLine } from './flow/edit';
 import { findingsByNode, nodeAtLine, nodeForFinding } from './flow/sourceMap';
 
 type Theme = 'light' | 'dark';
 type RightTab = 'problems' | 'metrics' | 'decompose';
+/** Раскладка центра: граф и код, только граф (для показа) или только код. */
+type ViewMode = 'split' | 'graph' | 'code';
 interface Panels { left: boolean; right: boolean; bottom: boolean }
 
 /** Настройки вида живут в localStorage браузера; недоступен (приватный режим) — работаем с умолчаниями. */
@@ -92,6 +95,7 @@ export function App() {
   const [bottomTab, setBottomTab] = useState<BottomTab>('console');
   /** Доля высоты холста в центральной колонке (остальное — редактор); граница перетаскивается. */
   const [split, setSplit] = useState(() => stored<number>('jb.split', 0.6));
+  const [view, setView] = useState<ViewMode>(() => stored<ViewMode>('jb.view', 'split'));
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const centerRef = useRef<HTMLDivElement>(null);
@@ -116,6 +120,7 @@ export function App() {
   }, [theme]);
   useEffect(() => store('jb.panels', panels), [panels]);
   useEffect(() => store('jb.split', split), [split]);
+  useEffect(() => store('jb.view', view), [view]);
 
   const togglePanel = (key: keyof Panels, force?: boolean) => setPanels((p) => ({ ...p, [key]: force ?? !p[key] }));
   /** Кнопка полосы: открыть панель на нужной вкладке; повторное нажатие на активную — спрятать. */
@@ -353,6 +358,21 @@ export function App() {
   const openedMethod = graph?.level === 'method' ? overview?.nodes.find((n) => n.id === graph.scope) ?? null : null;
   const ownerType = openedMethod?.parent ? overview?.nodes.find((n) => n.id === openedMethod.parent) ?? null : null;
 
+  /** Проводник → член класса: показать на обзоре, выделить и подсветить код. */
+  const selectMember = (node: GraphNode) => {
+    if (overview && graph !== overview) showGraph(overview);
+    if (node.range && node.range.file !== activeFile) {
+      const file = project?.files.find((f) => f.path === node.range!.file);
+      if (file) {
+        setActiveFile(file.path);
+        setDraft(file.content);
+      }
+    }
+    setSelected(node);
+    setHighlight(node.range ?? null);
+    focusNode(node);
+  };
+
   const focusNode = (node: GraphNode) => setFocus((f) => ({ id: node.id, seq: (f?.seq ?? 0) + 1 }));
 
   const selectFinding = (finding: Finding) => {
@@ -442,14 +462,22 @@ export function App() {
         onChange={(e) => { importFiles(e.target.files); e.target.value = ''; }} />
 
       <header className="toolbar">
-        <div className="app-logo" aria-hidden><DraftingCompass size={17} /></div>
+        <div className="app-logo" aria-hidden><DraftingCompass size={18} /></div>
+        <span className="brand-name">Java Blueprints</span>
         <div className="project-widget">
-          <span className="project-name" title={project?.name ?? undefined}>{project ? project.name ?? activeFile : 'Java Blueprints'}</span>
+          <FileCode2 size={15} className="icon-java" />
+          <span className="project-name" title={project?.name ?? undefined}>{project ? project.name ?? activeFile : 'Нет проекта'}</span>
           {project && <span className="muted" title="Версия проекта: каждая правка — новая версия, v1 — эталон поведения">v{project.version}</span>}
         </div>
         <button onClick={() => fileInput.current?.click()} title="Открыть .java-файлы (можно перетащить в окно)">
           <FolderOpen size={16} />Открыть
         </button>
+        <div className="toolbar-spacer" />
+        <div className="segmented" role="group" aria-label="Раскладка">
+          <button aria-pressed={view === 'graph'} onClick={() => setView('graph')} disabled={!project} title="Только граф — для показа">Граф</button>
+          <button aria-pressed={view === 'split'} onClick={() => setView('split')} disabled={!project} title="Граф и код">Граф + код</button>
+          <button aria-pressed={view === 'code'} onClick={() => setView('code')} disabled={!project} title="Только код">Код</button>
+        </div>
         <div className="toolbar-spacer" />
         <div className="run-widget">
           <button disabled={!project || running} onClick={runProgram} title="Запустить программу (Shift+F10)">
@@ -464,7 +492,6 @@ export function App() {
           title="Zip: текущий код, JUnit-тесты против версии 1 (golden master) и отчёт проверки; запуск — mvn test">
           <Download size={16} />{exporting ? 'Готовим архив…' : 'Экспорт с тестами'}
         </button>
-        <div className="toolbar-sep" />
         <button className="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           title={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'} aria-label="Сменить тему">
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
@@ -481,28 +508,33 @@ export function App() {
 
         {panels.left && (
           <aside className="island sidebar" style={{ gridArea: 'left' }}>
-            <div className="island-head"><span className="island-title">Проект</span></div>
-            <div className="island-body pad">
+            <div className="island-head"><span className="island-title">Проводник</span></div>
+            <div className="island-body pad explorer-body">
               {!project && <div className="muted">Нет открытых файлов</div>}
-              {project?.files.map((f) => (
-                <div key={f.path} className={`file ${f.path === activeFile ? 'active' : ''}`}
-                     onClick={() => { setActiveFile(f.path); setDraft(f.content); }}>
-                  <FileCode2 size={15} />{f.path}
-                </div>
-              ))}
-              {selected && graph && (
-                <div className="section">
-                  <NodeInspector selection={selection} graph={graph} onOp={applyGraphOp} />
-                </div>
+              {project && (
+                <Explorer
+                  files={project.files}
+                  activeFile={activeFile}
+                  onOpenFile={(path) => { const f = project.files.find((x) => x.path === path); if (f) { setActiveFile(f.path); setDraft(f.content); } }}
+                  overview={overview}
+                  findings={diagnostics?.findings ?? []}
+                  selectedId={selected?.id ?? null}
+                  onSelectMember={selectMember}
+                  onOpenMethod={openMethod}
+                />
               )}
-              {graph?.level === 'method' && <div className="hint">Shift/Ctrl+клик — выделить несколько блоков подряд</div>}
-              {graph?.level === 'overview' && !selected && <div className="hint">Клик по методу — выделить, двойной клик — открыть блок-схему</div>}
             </div>
+            {selected && graph && (
+              <div className="inspector-dock">
+                <NodeInspector selection={selection} graph={graph} onOp={applyGraphOp} />
+                {graph.level === 'method' && <div className="hint">Shift/Ctrl+клик — выделить несколько блоков подряд</div>}
+              </div>
+            )}
           </aside>
         )}
 
         <div className="center" ref={centerRef} style={{ gridArea: 'center' }}>
-          <main className="island" style={{ flex: project ? `${split} 1 0` : '1 1 0' }}>
+          <main className="island" style={{ flex: !project || view === 'graph' ? '1 1 0' : `${split} 1 0` }} hidden={!!project && view === 'code'}>
             <div className="island-head">
               <div className="tabs" role="tablist">
                 <button role="tab" className={graph?.level !== 'method' ? 'active' : ''} aria-selected={graph?.level !== 'method'}
@@ -517,11 +549,18 @@ export function App() {
                   </button>
                 )}
               </div>
-              {graph && (
-                <span className="head-hint">
-                  {graph.level === 'method' ? 'Блок-схема метода: клик по блоку — код и правка слева' : 'Классы и их члены; двойной клик по методу — блок-схема'}
-                </span>
-              )}
+              {overview && diagnostics && (
+          <div className="chips head-chips" aria-label="Сводка проекта">
+            <span className="chip-metric" title="Типы: классы, интерфейсы, enum, record"><Box size={13} />Типы <b>{overview.nodes.filter((n) => ['class', 'interface', 'enum', 'record'].includes(n.kind)).length}</b></span>
+            <span className="chip-metric" title="Методы и конструкторы"><SquareFunction size={13} />Методы <b>{overview.nodes.filter((n) => n.kind === 'method' || n.kind === 'constructor').length}</b></span>
+            <span className={`chip-metric ${diagnostics.findings.some((f) => f.severity === 'high') ? 'err' : ''}`} title="Проблем высокой важности">
+              <CircleAlert size={13} />Важных <b>{diagnostics.findings.filter((f) => f.severity === 'high').length}</b>
+            </span>
+            <span className={`chip-metric ${diagnostics.metrics.some((m) => /n\^?[2-9²³]/.test(m.complexity ?? '')) ? 'warn' : ''}`} title="Методы со сложностью выше линейной">
+              <TriangleAlert size={13} />Выше O(n) <b>{diagnostics.metrics.filter((m) => /n\^?[2-9²³]|2\^n|n!/.test(m.complexity ?? '')).length}</b>
+            </span>
+          </div>
+        )}
             </div>
             <div className="canvas">
               {graph ? (
@@ -554,8 +593,8 @@ export function App() {
             </div>
           </main>
           {/* Без проекта редактор пуст — приветствие занимает всю колонку. */}
-          <div className="splitter" role="separator" aria-orientation="horizontal" aria-label="Граница графа и кода" onPointerDown={startSplit} hidden={!project} />
-          <section className="island" style={{ flex: `${1 - split} 1 0` }} hidden={!project}>
+          <div className="splitter" role="separator" aria-orientation="horizontal" aria-label="Граница графа и кода" onPointerDown={startSplit} hidden={!project || view !== 'split'} />
+          <section className="island" style={{ flex: view === 'code' ? '1 1 0' : `${1 - split} 1 0` }} hidden={!project || view === 'graph'}>
             <div className="island-head">
               {activeFile ? (
                 <span className="editor-tab" title={activeFile}>
