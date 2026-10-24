@@ -18,6 +18,8 @@ import com.github.javaparser.ast.stmt.TryStmt;
 import com.github.javaparser.ast.stmt.WhileStmt;
 import io.blueprints.core.model.ProjectModel;
 
+import java.util.Collection;
+
 /**
  * Метрики метода по PLAN.md §4: цикломатическая сложность, максимальная вложенность блоков
  * и оценка Big O из AST.
@@ -101,6 +103,42 @@ public final class MetricsCalculator {
     /** Оценка Big O метода. */
     public BigO complexity(MethodDeclaration method) {
         return method.getBody().map(body -> estimate(body, 0)).orElse(BigO.constant());
+    }
+
+    /**
+     * Оценка Big O фрагмента: выбранные блоки блок-схемы (id узлов графа) → их AST-поддеревья.
+     *
+     * <p>Циклы-предки учитываются: блок внутри двух циклов исполняется O(n²) раз, поэтому фрагмент
+     * показывает ту же сложность, что и метод, но только для выбранной части. Синтетический блок
+     * {@code <id метода>:start} даёт сложность метода целиком; неизвестные id игнорируются.
+     * Чистая функция: модель не меняется, применения к графу нет.
+     */
+    public BigO complexityOf(ProjectModel model, Collection<String> nodeIds) {
+        if (model == null || nodeIds == null) {
+            return BigO.constant();
+        }
+        BigO result = BigO.constant();
+        for (String nodeId : nodeIds) {
+            Node node = astNode(model, nodeId);
+            if (node == null) {
+                continue;
+            }
+            result = result.max(estimate(node, Ast.enclosingLoops(node).size()));
+        }
+        return result;
+    }
+
+    /** Узел по id графа: AST-узлы адресуются как {@code "g" + astId} (соглашение graph.schema.json). */
+    private static Node astNode(ProjectModel model, String nodeId) {
+        if (nodeId == null || nodeId.isBlank()) {
+            return null;
+        }
+        String id = nodeId;
+        if (id.endsWith(":start") || id.endsWith(":end")) {
+            id = id.substring(0, id.lastIndexOf(':'));
+        }
+        String astId = id.startsWith("g") ? id.substring(1) : id;
+        return model.nodeById(astId).orElse(null);
     }
 
     private BigO estimate(Node node, int loopDepth) {

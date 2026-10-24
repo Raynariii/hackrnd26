@@ -111,7 +111,10 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
       `AnalyzerFixApplicabilityTest`. Пересечение: PR #27 (`feat/analysis-fix-safety`, та же задача через правила +
       `FixSafety`) — предложено слить #29 первым и ребейзнуть #27; `FixSafety` заменён реестром, полезные
       не-пересекающиеся части (словарь декомпозиции, тесты) — отдельным PR после ребейза.
-- [ ] P1 Big O на фрагмент (выделение блоков в блок-схеме), не только на метод — `PLAN.md` §4
+- [x] P1 Big O на фрагмент (PR #37): `MetricsCalculator.complexityOf(model, nodeIds)` — сложность выбранных
+      блоков блок-схемы по их AST-поддеревьям. Циклы-предки учитываются (блок внутри двух циклов — O(n²)),
+      синтетический `<id метода>:start` даёт сложность метода целиком, неизвестные id игнорируются; чистая
+      функция, граф не меняется. 3 теста. **Для UI нужен эндпоинт — запрос роли 4 ниже (P1, опционально).**
 - [x] P1 стоимость Stream API и лямбд в `CostModel` (бонус scope; PR #34): терминальные операции
       (`collect`/`toList`/`count`/`sum`/`forEach`/`anyMatch`/`findFirst`/…) — один проход O(n); `sorted` — O(n log n);
       лямбда в `filter/map/anyMatch/forEach/collect` и коллекторных фабриках выполняется на каждом элементе,
@@ -143,19 +146,32 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 **Блокеры:** —
 
 ### 2d — LLM-помощник (опц., первый на урезание по LEAD.md §5)
-- [ ] P2 `llm/`: интерфейс советчика + реализация через HTTP-клиент; ключ только из переменной окружения api, не в git;
-      предложение показывается только после quality gate (D6). Без ключа — модуль молча выключен, тесты без сети
+- [x] P2 `llm/`: советчик за качественным гейтом (PR #35). `OptimizationAdvisor` (`enabled`/`advise`),
+      `AdviceRequest`/`Advice`, `ClaudeAdvisor` (Messages API: ключ только из `ANTHROPIC_API_KEY` — заголовок
+      `x-api-key`, в тело и логи не попадает; модель — `ANTHROPIC_MODEL`, адрес — `BLUEPRINTS_LLM_URL`), транспорт
+      на JDK `HttpClient` за подменяемым `LlmTransport` — тесты без сети. Без ключа выключен и запросов не делает;
+      любая ошибка, не-200 или битый JSON → `Optional.empty()`, диагностика не падает. Совет — только текст:
+      применяется после quality gate (D6). 6 тестов `ClaudeAdvisorTest`. Для UI нужен эндпоинт — запрос роли 4 ниже
+      (P2, опционально). Новая зависимость `analysis` — `jackson-databind` (версия из Spring Boot BOM)
 **Блокеры:** —
 
 ## Роль 3 — фронтенд
-- [ ] блок-схема метода: группы для циклов/try (parent), подписи Да/Нет, стили по макету
-- [ ] двусторонняя подсветка: клик по строке в Monaco → узел
-- [ ] маркеры находок на узлах, клик по находке → узел
-- [ ] палитра блоков (drag&drop) → `graph/ops`
-- [ ] экран проверки: N/N тестов, «Поведение совпадает», график времени до/после
-- [ ] Monaco без CDN (локальная загрузка для офлайн-демо)
+- [x] блок-схема метода: группы для циклов/try (parent), подписи Да/Нет, стили по макету (PR #1)
+- [x] двусторонняя подсветка: клик по строке в Monaco → узел (PR #2)
+- [x] маркеры находок на узлах, клик по находке → узел (PR #2, #6): находки привязываются к блокам по `id`/`meta.covers`, маркер с числом, цветом серьёзности и списком
+- [x] правка на графе: изменить / вставить после (вид блока + шаблон ядра) / удалить → `graph/ops`; после правки остаёмся в методе (PR #11)
+- [x] авто-исправление находки: «Исправить автоматически» → `POST /fixes/{id}` → дифф, код и граф обновлены → сразу дифф-тесты; «Отменить» (PR #13; `/fixes` с quality gate — PR #21 роли 4)
+- [x] выделение нескольких блоков (Shift/Ctrl+клик) и операции над ним: обернуть в if / цикл, вынести в метод, переместить, удалить (PR #17)
+- [x] обзор монолита: типы — рамки с членами сеткой (ELK rectpacking), без рёбер contains, вызовы выделенного метода подсвечиваются (PR #18; по журналу интеграции №1: «плоская лента, рёбра call накладываются»)
+- [x] под живой api (#19, #21): канал расхождения verify из серверного `mismatch`, кейсы без `actual` (не компилируется); в баннере исправления — описание FixEngine и quality gate; поле stdin у «Запуска»; запросы `client.ts` проверены против контракта (PR #25)
+- [x] экран декомпозиции: «Предложить разбиение» (POST /decompose, apply=false) → классы, ответственность, члены, пояснения; клик по классу выделяет его члены на обзоре, по члену — фокус; общие члены помечены; фикстура — настоящий Decomposer на OrdersMonolith/ScopeSample (PR #26)
+- [ ] палитра блоков (drag&drop) → `graph/ops` — режется первой из фронта (LEAD.md §5, п. 4 лестницы)
+- [x] экран проверки: N/N тестов, «Поведение совпадает», график времени до/после (PR #8; `POST /verify` роли 4 влит в #19; моки `?verify=fail` / `?verify=nocompile`)
+- [x] Monaco без CDN (локальная загрузка для офлайн-демо) (PR #2)
 - [x] за роль 4 (с согласия разработчика): `docs/scope.md` — матрица scope 1–4 + бонус (G9), разделы «Поддержанный scope» и «Ограничения» в `docs/architecture.md`; пробелы визуализации — запрос роли 1 в Notion (PR #33)
-**Блокеры:** ждём `methodFlow` (пока работаем на моках `npm run dev:mock`)
+**Блокеры:** `npm test` (node --test) пока не в CI — запрос роли 4. Рендер проверен на настоящих блок-схемах ядра (PR #5):
+`npm run dev:mock` → `?demo=flow` / `?demo=orders`. Правка на графе проверена на записанных операциях настоящего ядра: `?demo=main`.
+**Дальше:** сквозная проверка с живым api (`docker compose up`); палитра drag&drop — если останется время.
 
 ## Роль 4 — песочница, API, сборка
 - [x] `POST /internal/run-batch` в runner: javac один раз, затем `java` на каждом stdin; из вывода убраны путь
@@ -200,6 +216,8 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 | Роль 2 | `POST /api/projects/{id}/fixes/{findingId}`: вызвать `io.blueprints.analysis.FixEngine#apply(files, findingId)`, закоммитить новую версию и вернуть `ChangeResult` (state + diff); `FixNotApplicableException` → 409/422 с текстом причины. Контракт и контроллер — зона роли 4. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
 | Роль 4 | В `GET /diagnostics` у `collection-lookup-in-loop` стоит `fix.autoApplicable=true`, но `FixEngine.apply` отказывает (коллекция меняется в цикле — `00-hello`, `OrdersMonolith`). Кнопка «Применить» в UI обещает то, чего нет: выставлять `autoApplicable` по тем же проверкам, что и `apply`. | Роль 2 | Сделано — PR #29: `autoApplicable` = `Fixers.supports(model, finding)` (те же проверки, что и `apply`), текст отказа у 422 совпадает |
 | Роль 2 | `POST /api/projects/{id}/decompose`: `new Decomposer().propose(session.model())` → `DecomposeResult.proposal` (apply=false, v1); при apply=true пока 501 `not_implemented`. | Роль 4 | Сделано — `feat/api-fixes-decompose` |
+| Роль 2 | (опц., P2) `POST /api/projects/{id}/advice` с `{findingId}`: `ClaudeAdvisor.fromEnvironment().advise(...)` по коду метода/фрагмента находки; без `ANTHROPIC_API_KEY` — `enabled=false` → 204; применение совета — только через quality gate (как `/fixes`). Заодно `ANTHROPIC_API_KEY=` в `.env.example` (опц.). Контракт — зона роли 4. | Роль 4 | Открыт (P2) |
+| Роль 2 | (опц., P1) `POST /api/projects/{id}/complexity` с `{version, nodeIds}`: `new MetricsCalculator().complexityOf(session.model(), nodeIds).toString()` → `{current}` для выделенных блоков блок-схемы (фронт уже умеет выделять блоки для `graph/ops`). Библиотечная часть готова (PR #37). Контракт — зона роли 4. | Роль 4 | Открыт (P1) |
 | Роль 4 | Обзорный граф пропускает члены класса: `static`/instance-блоки инициализации (`InitializerDeclaration`), компактный конструктор record (`CompactConstructorDeclaration`), компоненты record, константы enum (с телами). Код сохраняется, но в графе их нет — в `docs/scope.md` отмечено 🟡. | Роль 1 | Открыт |
 
 ## Журнал интеграций
