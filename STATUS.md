@@ -54,6 +54,13 @@
       печатаются в лог теста (сейчас только `synchronized`) — для `docs/scope.md` (роль 4)
 - [x] откат на pretty-print, если LexicalPreservingPrinter падает (G6): `CodeGenerator.printReport` → `reformatted`
       (список файлов, напечатанных без сохранения форматирования); операции графа LPP для правок не используют
+- [x] AST-хелперы фаззинга статических методов (G5; `io.blueprints.core.fuzz.FuzzHarness`, 4 теста; PR — feat/core-fuzz-helpers):
+      `scan` — статические методы с параметрами int/long/double/boolean/char (+обёртки), String, одномерные массивы,
+      `List<Integer|String>`, varargs; остальные — в `skipped` с причиной. `common(baseline, current)` — цели с той же
+      сигнатурой в обеих версиях. `generate(targets, n)` — класс `BlueprintsFuzzHarness` (reflection, работает и с
+      private): граничные значения + Random с фиксированным seed, строка на вызов `имя(args) -> результат | throws
+      Тип: msg | timeout` (500 мс на вызов). Тест: рефакторинг через граф (extractMethod) даёт тот же вывод, смена
+      условия — расхождение ровно в строках этого метода
 **Для фронта (роль 3):** находка → блок: блок, у которого `id` или `meta.covers` содержит любой из `Finding.nodeIds`.
 `start` блок-схемы покрывает id метода (находки уровня метода, например long-method).
 **Для фронта (роль 3), `POST /graph/ops`:** `editNode` у condition/loop/switch меняет только заголовок
@@ -63,6 +70,10 @@
 `move` — `nodeIds` + `targetId`. Палитра: `kind` + короткий `code` (`condition` + `x > 0` → `if (x > 0) {}`, `loop` + `x : xs` →
 for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`. После операции id меняются — перезапросите граф.
 `wrapIf`/`wrapLoop` отказывают (422), если выделение объявляет переменную, нужную после блока.
+**Для роли 4 (фаззинг в /verify, fuzz=true):** `targets = FuzzHarness.common(baselineModel, currentModel)`,
+`h = FuzzHarness.generate(targets, 20)`; добавить `h.file()` к файлам обеих версий, запустить в runner с
+`mainClass = h.mainClass()` и пустым stdin, сравнить stdout (нормализация `@HASH` уже в контракте) — один VerifyCase
+«fuzz» или по кейсу на метод (строки начинаются с имени метода).
 **Для роли 4:** `CodeGenerator.printReport(model).reformatted()` можно отдать в ответе как предупреждение (G6).
 **Блокеры:** —
 
