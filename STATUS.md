@@ -50,9 +50,9 @@
 **Известное ограничение:** LexicalPreservingPrinter не выравнивает отступы у вставленных операторов
 (`var _index = new java.util.HashSet<>(...)` печатается на уровень выше) — код валиден и компилируется,
 это косметика на полировку.
-**Блокеры:** ветка `feat/analysis-rules` готова локально (5 коммитов, 47 тестов), но публикация ждёт
-доступа на запись в `Raynariii/hackrnd26`: fine-grained PAT не имеет прав Contents/PR (403
-«Resource not accessible by personal access token»).
+**PR:** [#3](https://github.com/Raynariii/hackrnd26/pull/3) — 48 тестов модуля `analysis` зелёные, CI зелёный
+(backend, frontend, contracts, compose).
+**Блокеры:** —
 
 ## Роль 3 — фронтенд
 - [ ] блок-схема метода: группы для циклов/try (parent), подписи Да/Нет, стили по макету
