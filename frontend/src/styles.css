@@ -207,3 +207,7 @@ button.danger { border-color: rgba(239, 68, 68, .6); color: #fca5a5; }
 .diff-add { display: block; background: rgba(34, 197, 94, .18); }
 .diff-del { display: block; background: rgba(239, 68, 68, .18); }
 .diff-hunk { display: block; color: var(--muted); }
+.inspector-list { margin: 0; padding-left: 18px; font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
+.inspector-list code { color: var(--muted); font-size: 11px; word-break: break-all; }
+.inspector-form select { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px; font-size: 12px; }
+.hint { font-size: 11px; margin-top: 12px; }

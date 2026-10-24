@@ -10,6 +10,17 @@ import { VerifyScreen } from './components/VerifyScreen';
 import { changedLineNumbers, findMethodAgain, firstChangedLine } from './flow/edit';
 import { findingsByNode, nodeAtLine, nodeForFinding } from './flow/sourceMap';
 
+/** Общий диапазон строк выделения (в одном файле) — для подсветки в коде. */
+function unionRange(nodes: GraphNode[]): SourceRange | null {
+  const ranges = nodes.map((n) => n.range).filter((r): r is SourceRange => !!r);
+  if (!ranges.length || ranges.some((r) => r.file !== ranges[0].file)) return ranges.at(-1) ?? null;
+  return {
+    file: ranges[0].file,
+    startLine: Math.min(...ranges.map((r) => r.startLine)),
+    endLine: Math.max(...ranges.map((r) => r.endLine)),
+  };
+}
+
 export function App() {
   const [project, setProject] = useState<ProjectState | null>(null);
   const [activeFile, setActiveFile] = useState<string | null>(null);
@@ -18,7 +29,10 @@ export function App() {
   /** Последний обзорный граф: по нему после правки находим открытый метод заново (id пересчитываются). */
   const [overview, setOverview] = useState<Graph | null>(null);
   const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
-  const [selected, setSelected] = useState<GraphNode | null>(null);
+  /** Выделенные блоки; последний — основной (его показывает инспектор и подсвечивает код). */
+  const [selection, setSelection] = useState<GraphNode[]>([]);
+  const selected = selection.at(-1) ?? null;
+  const setSelected = useCallback((node: GraphNode | null) => setSelection(node ? [node] : []), []);
   const [highlight, setHighlight] = useState<SourceRange | null>(null);
   /** Запрос «покажи узел на холсте» — когда выбор пришёл не с самого холста. */
   const [focus, setFocus] = useState<{ id: string; seq: number } | null>(null);
@@ -172,7 +186,14 @@ export function App() {
       setBeforeFix(null);
     });
 
-  const selectNode = (node: GraphNode) => {
+  /** Клик по блоку; с Shift/Ctrl/Cmd — добавить в выделение или убрать из него (для операций над несколькими). */
+  const selectNode = (node: GraphNode, additive = false) => {
+    if (additive && selection.length > 0) {
+      const next = selection.some((n) => n.id === node.id) ? selection.filter((n) => n.id !== node.id) : [...selection, node];
+      setSelection(next);
+      setHighlight(unionRange(next));
+      return;
+    }
     setSelected(node);
     setHighlight(node.range ?? null);
   };
@@ -231,14 +252,15 @@ export function App() {
             {f.path}
           </div>
         ))}
-        {selected && graph && <NodeInspector node={selected} level={graph.level} onOp={applyGraphOp} />}
+        {selected && graph && <NodeInspector selection={selection} graph={graph} onOp={applyGraphOp} />}
+        {graph?.level === 'method' && <div className="muted hint">Shift/Ctrl+клик — выделить несколько блоков</div>}
       </aside>
 
       <main className="canvas">
         {graph ? (
           <GraphCanvas
             graph={graph}
-            selectedId={selected?.id ?? null}
+            selectedIds={selection.map((n) => n.id)}
             onSelect={selectNode}
             onOpenMethod={(node) => project && guard(async () => showGraph(await api.getGraph(project.id, 'method', node.id)))}
             focus={focus}

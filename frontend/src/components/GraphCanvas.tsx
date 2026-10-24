@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Background, Controls, MiniMap, ReactFlow, useEdgesState, useNodesState, useReactFlow, type Edge, type Node } from '@xyflow/react';
+import { Background, Controls, MiniMap, ReactFlow, useEdgesState, useNodesState, useReactFlow, type Edge, type Node, type NodeChange } from '@xyflow/react';
 import type { Finding, Graph, GraphNode } from '../api/types';
 import { BlockNode, FrameNode, kindColor } from './BlockNode';
 import { layoutGraph } from './layout';
@@ -8,8 +8,10 @@ const nodeTypes = { block: BlockNode, frame: FrameNode };
 
 interface Props {
   graph: Graph | null;
-  selectedId: string | null;
-  onSelect: (node: GraphNode) => void;
+  /** Выделение задаёт App (клик, строка кода, находка); собственный выбор React Flow игнорируется. */
+  selectedIds: string[];
+  /** additive — клик с Shift/Ctrl/Cmd: добавить блок к выделению или убрать из него. */
+  onSelect: (node: GraphNode, additive: boolean) => void;
   onOpenMethod: (node: GraphNode) => void;
   /** Показать узел на холсте (выбор пришёл из кода или из списка проблем). seq — чтобы повторный запрос тоже срабатывал. */
   focus?: { id: string; seq: number } | null;
@@ -46,7 +48,7 @@ const NO_FINDINGS: Finding[] = [];
 
 const nodeOf = (n: Node) => (n.data as { node: GraphNode }).node;
 
-export function GraphCanvas({ graph, selectedId, onSelect, onOpenMethod, focus, findings }: Props) {
+export function GraphCanvas({ graph, selectedIds, onSelect, onOpenMethod, focus, findings }: Props) {
   // Узлы живут в состоянии и принимают изменения от React Flow (размеры, выделение). Если отдавать новые
   // объекты на каждый рендер без onNodesChange, React Flow теряет замеры и на кадр прячет узлы —
   // второй клик двойного клика уходит в пустой холст, и метод не открывается.
@@ -73,15 +75,19 @@ export function GraphCanvas({ graph, selectedId, onSelect, onOpenMethod, focus, 
     };
   }, [graph, setNodes, setEdges]);
 
+  const selectedKey = selectedIds.join('|');
+  const selected = new Set(selectedIds);
   // Выделение задаёт App (клик по узлу, находке, строке кода): меняем только узлы, у которых оно поменялось.
   useEffect(() => {
     setNodes((nds) =>
       nds.map((n) => {
-        const want = n.type === 'block' && n.id === selectedId;
-        return Boolean(n.selected) === want ? n : { ...n, selected: want };
+        if (n.type !== 'block') return n;
+        const want = selected.has(n.id);
+        const data = n.data as { selected?: boolean };
+        return Boolean(data.selected) === want ? n : { ...n, data: { ...n.data, selected: want } };
       }),
     );
-  }, [selectedId, rev, setNodes]);
+  }, [selectedKey, rev, setNodes]);
 
   // Маркеры находок: диагностика приходит отдельным запросом, раскладку из-за неё не пересчитываем.
   useEffect(() => {
@@ -103,11 +109,14 @@ export function GraphCanvas({ graph, selectedId, onSelect, onOpenMethod, focus, 
       key={rev}
       nodes={nodes}
       edges={edges}
-      onNodesChange={onNodesChange}
+      // Выделение — только из App и только через data.selected: собственный выбор React Flow выключен,
+      // иначе его «один клик — один узел» перебивает выделение нескольких блоков.
+      elementsSelectable={false}
+      onNodesChange={(changes: NodeChange[]) => onNodesChange(changes.filter((c) => c.type !== 'select'))}
       onEdgesChange={onEdgesChange}
       nodeTypes={nodeTypes}
       nodesConnectable={false}
-      onNodeClick={(_, n) => n.type === 'block' && onSelect(nodeOf(n))}
+      onNodeClick={(e, n) => n.type === 'block' && onSelect(nodeOf(n), e.shiftKey || e.ctrlKey || e.metaKey)}
       onNodeDoubleClick={(_, n) => {
         const node = nodeOf(n);
         if (node.kind === 'method' || node.kind === 'constructor') onOpenMethod(node);

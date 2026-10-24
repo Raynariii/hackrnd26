@@ -28,12 +28,28 @@ export interface Snapshot {
 
 /**
  * ?demo=main — Main.java и операции графа, выполненные настоящим DefaultGraphOperations (main, PR #7):
- * изменить условие, вставить переменную/условие, удалить вызов, изменить заголовок цикла.
+ * изменить условие, вставить переменную/условие, удалить вызов, изменить заголовок цикла; над выделением —
+ * обернуть в if / цикл, вынести в метод, перенести, удалить несколько; и два отказа ядра (несмежное выделение, return).
  * Режим моков отвечает «после» только на эти операции из исходного состояния.
  */
 export interface OpsDemo extends Snapshot {
   file: string;
-  ops: Record<string, { request: { op: string; nodeId: string; code: string | null; kind: string | null }; after: Snapshot }>;
+  ops: Record<string, RecordedOp>;
+}
+
+export interface RecordedOp {
+  request: {
+    op: string;
+    nodeId?: string;
+    nodeIds?: string[];
+    code?: string | null;
+    kind?: string | null;
+    targetId?: string | null;
+    name?: string | null;
+  };
+  /** Снимок после операции — или текст отказа ядра (UnsupportedGraphOpException → 422). */
+  after?: Snapshot;
+  rejected?: string;
 }
 
 export const opsDemo = mainOps as unknown as OpsDemo;

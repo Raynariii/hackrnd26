@@ -42,8 +42,14 @@ function ShapeOutline({ shape, size, color }: { shape: Shape; size: Size; color:
   );
 }
 
-export function BlockNode({ data, selected }: NodeProps) {
-  const { node, size: given, findings: list = [] } = data as { node: GraphNode; size?: Size; findings?: Finding[] };
+export function BlockNode({ data }: NodeProps) {
+  const { node, size: given, findings: list = [], selected = false } = data as {
+    node: GraphNode;
+    size?: Size;
+    findings?: Finding[];
+    /** Выделение задаёт App (может быть несколько блоков) — не флаг React Flow. */
+    selected?: boolean;
+  };
   const size = given ?? nodeSize(node.kind);
   const shape = nodeShape(node.kind);
   const color = kindColor(node.kind);

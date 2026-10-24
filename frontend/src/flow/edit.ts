@@ -4,6 +4,9 @@ import type { Graph, GraphNode, NodeKind, SourceFile } from '../api/types';
 
 export type EditOp = 'editNode' | 'insertAfter' | 'delete';
 
+/** Операции над выделением из одного или нескольких блоков (DefaultGraphOperations.selection). */
+export type SelectionOp = 'wrapIf' | 'wrapLoop' | 'extractMethod' | 'move' | 'delete';
+
 const MEMBERS = new Set<NodeKind>(['method', 'constructor', 'field']);
 const TYPES = new Set<NodeKind>(['class', 'interface', 'enum', 'record']);
 
@@ -125,3 +128,60 @@ export function changedLineNumbers(oldText: string, newText: string): number[] {
   }
   return out;
 }
+
+/**
+ * Ядро выделяет только операторы (не start/end, не case/catch/finally — это части конструкций),
+ * а на обзоре — члены класса (для move и delete). Смежность проверяет ядро и объясняет отказ.
+ */
+const NOT_STATEMENTS = new Set<NodeKind>(['start', 'end', 'case', 'catch', 'finally']);
+
+export function selectionOps(nodes: GraphNode[], level: Graph['level']): SelectionOp[] {
+  if (nodes.length === 0) return [];
+  if (level === 'overview') {
+    return nodes.every((n) => MEMBERS.has(n.kind)) ? ['move', 'delete'] : [];
+  }
+  if (nodes.some((n) => NOT_STATEMENTS.has(n.kind) || TYPES.has(n.kind) || MEMBERS.has(n.kind))) return [];
+  return ['wrapIf', 'wrapLoop', 'extractMethod', 'move', 'delete'];
+}
+
+/** Выделение в порядке кода — так его поймёт пользователь в списке и так удобнее читать запрос. */
+export function inCodeOrder(nodes: GraphNode[]): GraphNode[] {
+  return [...nodes].sort((a, b) => (a.range?.startLine ?? 0) - (b.range?.startLine ?? 0) || (a.range?.startColumn ?? 0) - (b.range?.startColumn ?? 0));
+}
+
+export interface MoveTarget {
+  id: string;
+  label: string;
+}
+
+/**
+ * Куда можно переместить выделение (по правилам insertAfter): любой блок, кроме конца метода,
+ * самих выделенных и того, что лежит у них внутри. На обзоре — после другого члена класса.
+ */
+export function moveTargets(graph: Graph, selection: GraphNode[]): MoveTarget[] {
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  const selected = new Set(selection.map((n) => n.id));
+  const insideSelection = (n: GraphNode): boolean => {
+    const seen = new Set<string>();
+    let p = n.parent ? byId.get(n.parent) : undefined;
+    while (p && !seen.has(p.id)) {
+      if (selected.has(p.id)) return true;
+      seen.add(p.id);
+      p = p.parent ? byId.get(p.parent) : undefined;
+    }
+    return false;
+  };
+  const members = graph.level === 'overview';
+  return inCodeOrder(graph.nodes)
+    .filter((n) => !selected.has(n.id) && !insideSelection(n) && n.kind !== 'end')
+    .filter((n) => (members ? MEMBERS.has(n.kind) : !TYPES.has(n.kind) && !MEMBERS.has(n.kind)))
+    .map((n) => {
+      const where = ['start', 'case', 'catch', 'finally'].includes(n.kind) ? 'в начало' : 'после';
+      const text = n.kind === 'start' ? 'тела метода' : `«${n.code ?? n.label}»`;
+      const line = n.range && n.kind !== 'start' ? ` — стр. ${n.range.startLine}` : '';
+      return { id: n.id, label: `${where} ${text}${line}` };
+    });
+}
+
+/** Имя нового метода для extractMethod — Java-идентификатор (ядро проверит ещё раз). */
+export const isJavaIdentifier = (s: string) => /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(s.trim());

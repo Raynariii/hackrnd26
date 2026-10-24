@@ -47,15 +47,23 @@ export const mockApi = {
   graphOp: (_id: string, body: GraphOpRequest): Promise<ProjectState> => {
     if (!opsMode) return unprocessable('Правка на графе в режиме моков — только в ?demo=main');
     if (body.version !== project.version) return Promise.reject(new ApiRequestError(409, { error: 'version_conflict', message: 'Проект изменился' }));
+    const ids = (x: { nodeId?: string | null; nodeIds?: string[] | null }) => [...(x.nodeIds ?? (x.nodeId ? [x.nodeId] : []))].sort().join(',');
+    const same = (a: string | null | undefined, b: string | null | undefined) => (a ?? '').trim() === (b ?? '').trim();
     const rec = snapshot === opsDemo
       ? Object.values(opsDemo.ops).find(
-          (r) => r.request.op === body.op && r.request.nodeId === body.nodeId && (r.request.code ?? '') === (body.code ?? '').trim(),
+          (r) =>
+            r.request.op === body.op &&
+            ids(r.request) === ids(body) &&
+            same(r.request.code, body.code) &&
+            same(r.request.targetId, body.targetId) &&
+            same(r.request.name, body.name),
         )
       : undefined;
     if (!rec) {
-      const known = Object.values(opsDemo.ops).map((r) => `${r.request.op} «${r.request.code ?? '—'}»`).join(', ');
+      const known = Object.values(opsDemo.ops).map((r) => `${r.request.op}${r.request.code ? ` «${r.request.code}»` : ''}${r.request.name ? ` ${r.request.name}` : ''}`).join(', ');
       return unprocessable(`В демо записаны только операции из исходного состояния (обновите страницу): ${known}`);
     }
+    if (rec.rejected || !rec.after) return unprocessable(rec.rejected ?? 'Операция отклонена');
     snapshot = rec.after;
     project = { ...project, version: project.version + 1, files: [{ path: opsDemo.file, content: rec.after.source }] };
     return delay(project);
