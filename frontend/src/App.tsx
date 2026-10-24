@@ -1,16 +1,48 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { Boxes, ChevronRight, CircleAlert, CircleCheck, CircleX, Download, DraftingCompass, FileCode2, FlaskConical, FolderOpen, Gauge, LayoutGrid, Moon, Play, ShieldCheck, Sun, Terminal, Upload, Workflow, X } from 'lucide-react';
 import { api, ApiRequestError } from './api/client';
 import type { DecomposeResult, Diagnostics, Finding, Graph, GraphNode, GraphOpRequest, ProjectState, RunResult, SourceFile, SourceRange, VerifyReport } from './api/types';
-import { AnalysisPanel, type AppliedFix } from './components/AnalysisPanel';
+import { AnalysisPanel, MetricsPanel, type AppliedFix } from './components/AnalysisPanel';
 import { DecomposePanel } from './components/DecomposePanel';
 import { exportSummary } from './api/download';
-import { BottomPanel } from './components/BottomPanel';
+import { BottomPanel, type BottomTab } from './components/BottomPanel';
 import { CodeEditor } from './components/CodeEditor';
 import { GraphCanvas } from './components/GraphCanvas';
 import { NodeInspector } from './components/NodeInspector';
 import { VerifyScreen } from './components/VerifyScreen';
 import { changedLineNumbers, findMethodAgain, firstChangedLine } from './flow/edit';
 import { findingsByNode, nodeAtLine, nodeForFinding } from './flow/sourceMap';
+
+type Theme = 'light' | 'dark';
+type RightTab = 'problems' | 'metrics' | 'decompose';
+interface Panels { left: boolean; right: boolean; bottom: boolean }
+
+/** Настройки вида живут в localStorage браузера; недоступен (приватный режим) — работаем с умолчаниями. */
+function stored<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+function store(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* без сохранения настроек */
+  }
+}
+
+/** Кнопка полосы инструментов (как tool window stripe в IDE): открывает и прячет панель. */
+function StripeButton({ icon, label, active, badge, onClick }: { icon: React.ReactNode; label: string; active: boolean; badge?: number; onClick: () => void }) {
+  return (
+    <button className="stripe-btn" aria-pressed={active} title={label} aria-label={label} onClick={onClick}>
+      {icon}
+      {!!badge && <span className="stripe-badge">{badge > 99 ? '99+' : badge}</span>}
+    </button>
+  );
+}
 
 /** Общий диапазон строк выделения (в одном файле) — для подсветки в коде. */
 function unionRange(nodes: GraphNode[]): SourceRange | null {
@@ -54,6 +86,15 @@ export function App() {
   const [applied, setApplied] = useState<AppliedFix | null>(null);
   const [beforeFix, setBeforeFix] = useState<SourceFile[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [theme, setTheme] = useState<Theme>(() => stored<Theme>('jb.theme', 'dark'));
+  const [panels, setPanels] = useState<Panels>(() => stored<Panels>('jb.panels', { left: true, right: true, bottom: false }));
+  const [rightTab, setRightTab] = useState<RightTab>('problems');
+  const [bottomTab, setBottomTab] = useState<BottomTab>('console');
+  /** Доля высоты холста в центральной колонке (остальное — редактор); граница перетаскивается. */
+  const [split, setSplit] = useState(() => stored<number>('jb.split', 0.6));
+  const [dragging, setDragging] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const centerRef = useRef<HTMLDivElement>(null);
 
   const nodeFindings = useMemo(
     () => (graph && diagnostics ? findingsByNode(graph, diagnostics.findings) : undefined),
@@ -68,6 +109,30 @@ export function App() {
       setError(e instanceof ApiRequestError ? `${e.body.error}: ${e.message}` : String(e));
     }
   }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    store('jb.theme', theme);
+  }, [theme]);
+  useEffect(() => store('jb.panels', panels), [panels]);
+  useEffect(() => store('jb.split', split), [split]);
+
+  const togglePanel = (key: keyof Panels, force?: boolean) => setPanels((p) => ({ ...p, [key]: force ?? !p[key] }));
+  /** Кнопка полосы: открыть панель на нужной вкладке; повторное нажатие на активную — спрятать. */
+  const openRight = (tab: RightTab) => {
+    if (panels.right && rightTab === tab) togglePanel('right', false);
+    else {
+      setRightTab(tab);
+      togglePanel('right', true);
+    }
+  };
+  const openBottom = (tab: BottomTab) => {
+    if (panels.bottom && bottomTab === tab) togglePanel('bottom', false);
+    else {
+      setBottomTab(tab);
+      togglePanel('bottom', true);
+    }
+  };
 
   /** Новый граф: id узлов пересчитаны (graph.schema.json), старое выделение и фокус не имеют смысла. */
   const showGraph = useCallback((g: Graph) => {
@@ -159,6 +224,8 @@ export function App() {
     guard(async () => {
       if (!project) return;
       setRunning(true);
+      setBottomTab('console');
+      togglePanel('bottom', true);
       try {
         setRun(await api.run(project.id, stdin));
       } finally {
@@ -276,6 +343,16 @@ export function App() {
     setHighlight(node.range ?? null);
   };
 
+  const openMethod = (node: GraphNode) => project && guard(async () => showGraph(await api.getGraph(project.id, 'method', node.id)));
+  const openOverview = () => project && guard(async () => {
+    const ov = await api.getGraph(project.id);
+    setOverview(ov);
+    showGraph(ov);
+  });
+  /** Метод, открытый на холсте, — для вкладки и «хлебных крошек». */
+  const openedMethod = graph?.level === 'method' ? overview?.nodes.find((n) => n.id === graph.scope) ?? null : null;
+  const ownerType = openedMethod?.parent ? overview?.nodes.find((n) => n.id === openedMethod.parent) ?? null : null;
+
   const focusNode = (node: GraphNode) => setFocus((f) => ({ id: node.id, seq: (f?.seq ?? 0) + 1 }));
 
   const selectFinding = (finding: Finding) => {
@@ -302,99 +379,304 @@ export function App() {
     if (node) focusNode(node);
   };
 
+  const dirty = !!project && draft !== savedContent;
+  const findingsCount = diagnostics?.findings.length ?? 0;
+
+  // Горячие клавиши как в IDE: Shift+F10 — запуск, Esc — закрыть отчёт проверки.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showVerify) setShowVerify(false);
+      if (e.key === 'F10' && e.shiftKey && project && !running) {
+        e.preventDefault();
+        runProgram();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
+  /** Граница холст/редактор: тянем мышью, доля 25–80%. */
+  const startSplit = (e: React.PointerEvent<HTMLDivElement>) => {
+    const box = centerRef.current?.getBoundingClientRect();
+    if (!box) return;
+    const target = e.currentTarget;
+    target.setPointerCapture(e.pointerId);
+    target.classList.add('active');
+    const move = (ev: PointerEvent) => setSplit(Math.min(0.8, Math.max(0.25, (ev.clientY - box.top) / box.height)));
+    const up = () => {
+      target.classList.remove('active');
+      target.removeEventListener('pointermove', move);
+      target.removeEventListener('pointerup', up);
+    };
+    target.addEventListener('pointermove', move);
+    target.addEventListener('pointerup', up);
+  };
+
+  const columns = ['40px', panels.left ? 'clamp(220px, 18vw, 280px)' : null, 'minmax(0, 1fr)', panels.right ? 'clamp(300px, 25vw, 380px)' : null, '40px'].filter(Boolean).join(' ');
+  const areaRow = (bottom: boolean) =>
+    ['lstripe', panels.left ? (bottom ? 'bottom' : 'left') : null, bottom ? 'bottom' : 'center', panels.right ? (bottom ? 'bottom' : 'right') : null, 'rstripe']
+      .filter(Boolean).join(' ');
+  const workspaceStyle: CSSProperties = {
+    gridTemplateColumns: columns,
+    gridTemplateRows: panels.bottom ? 'minmax(0, 1fr) clamp(170px, 26vh, 260px)' : 'minmax(0, 1fr)',
+    gridTemplateAreas: panels.bottom ? `"${areaRow(false)}" "${areaRow(true)}"` : `"${areaRow(false)}"`,
+  };
+
   return (
-    <div className="app">
+    <div
+      className={`app ${dragging ? 'dragging' : ''}`}
+      onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragging(true); } }}
+      onDragLeave={(e) => { if (e.currentTarget === e.target) setDragging(false); }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragging(false);
+        const files = Array.from(e.dataTransfer.files).filter((f) => f.name.endsWith('.java'));
+        if (files.length) {
+          const dt = new DataTransfer();
+          files.forEach((f) => dt.items.add(f));
+          importFiles(dt.files);
+        }
+      }}
+    >
+      <input ref={fileInput} type="file" accept=".java" multiple hidden
+        onChange={(e) => { importFiles(e.target.files); e.target.value = ''; }} />
+
       <header className="toolbar">
-        <strong>Визуальная среда программирования</strong>
-        <label className="button">
-          Импорт Java
-          <input type="file" accept=".java" multiple hidden onChange={(e) => importFiles(e.target.files)} />
-        </label>
-        <button disabled={!project} onClick={applySource}>Применить код</button>
-        <button disabled={!project} onClick={() => project && guard(async () => {
-          const ov = await api.getGraph(project.id);
-          setOverview(ov);
-          showGraph(ov);
-        })}>Обзор</button>
-        <button disabled={!project || running} onClick={runProgram}>{running ? 'Запуск…' : '▶ Запуск'}</button>
-        <button disabled={!project || verifying} onClick={runVerify}>{verifying ? 'Проверяем…' : 'Проверить'}</button>
+        <div className="app-logo" aria-hidden><DraftingCompass size={17} /></div>
+        <div className="project-widget">
+          <span className="project-name" title={project?.name ?? undefined}>{project ? project.name ?? activeFile : 'Java Blueprints'}</span>
+          {project && <span className="muted" title="Версия проекта: каждая правка — новая версия, v1 — эталон поведения">v{project.version}</span>}
+        </div>
+        <button onClick={() => fileInput.current?.click()} title="Открыть .java-файлы (можно перетащить в окно)">
+          <FolderOpen size={16} />Открыть
+        </button>
+        <div className="toolbar-spacer" />
+        <div className="run-widget">
+          <button disabled={!project || running} onClick={runProgram} title="Запустить программу (Shift+F10)">
+            <Play size={15} className="run-icon" />{running ? 'Запуск…' : 'Запуск'}
+          </button>
+          <button className="primary" disabled={!project || verifying} onClick={runVerify}
+            title="Дифф-тесты: версия 1 против текущей на одних входах, плюс замер времени">
+            <ShieldCheck size={15} />{verifying ? 'Проверяем…' : 'Проверить поведение'}
+          </button>
+        </div>
         <button disabled={!project || exporting} onClick={exportProject}
           title="Zip: текущий код, JUnit-тесты против версии 1 (golden master) и отчёт проверки; запуск — mvn test">
-          {exporting ? 'Готовим архив…' : '⬇ Экспорт с тестами'}
+          <Download size={16} />{exporting ? 'Готовим архив…' : 'Экспорт с тестами'}
         </button>
-        {project && <span className="muted">v{project.version}</span>}
-        {exported && (
-          <span className={`export-note ${exported.preserved === false ? 'fail' : 'muted'}`} title={exported.fileName}>
-            ⬇ {exported.fileName}{exported.summary && ` · ${exported.summary}`}
-          </span>
-        )}
-        {error && <span className="error">{error}</span>}
+        <div className="toolbar-sep" />
+        <button className="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          title={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'} aria-label="Сменить тему">
+          {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+        </button>
       </header>
 
-      <aside className="sidebar">
-        <h3>Проект</h3>
-        {project?.files.map((f) => (
-          <div key={f.path} className={`file ${f.path === activeFile ? 'active' : ''}`}
-               onClick={() => { setActiveFile(f.path); setDraft(f.content); }}>
-            {f.path}
-          </div>
-        ))}
-        {selected && graph && <NodeInspector selection={selection} graph={graph} onOp={applyGraphOp} />}
-        {graph?.level === 'method' && <div className="muted hint">Shift/Ctrl+клик — выделить несколько блоков</div>}
-      </aside>
+      <div className="workspace" style={workspaceStyle}>
+        <nav className="stripe" style={{ gridArea: 'lstripe' }} aria-label="Панели слева">
+          <StripeButton icon={<FileCode2 size={18} />} label="Проект и выделенный блок" active={panels.left} onClick={() => togglePanel('left')} />
+          <div className="stripe-spacer" />
+          <StripeButton icon={<Terminal size={18} />} label="Консоль" active={panels.bottom && bottomTab === 'console'} onClick={() => openBottom('console')} />
+          <StripeButton icon={<FlaskConical size={18} />} label="Результат тестов" active={panels.bottom && bottomTab === 'tests'} onClick={() => openBottom('tests')} />
+        </nav>
 
-      <main className="canvas">
-        {graph ? (
-          <GraphCanvas
-            graph={graph}
-            selectedIds={selection.map((n) => n.id)}
-            onSelect={selectNode}
-            onOpenMethod={(node) => project && guard(async () => showGraph(await api.getGraph(project.id, 'method', node.id)))}
-            focus={focus}
-            findings={nodeFindings}
-          />
-        ) : (
-          <div className="empty">Импортируйте .java-файл, чтобы построить граф</div>
+        {panels.left && (
+          <aside className="island sidebar" style={{ gridArea: 'left' }}>
+            <div className="island-head"><span className="island-title">Проект</span></div>
+            <div className="island-body pad">
+              {!project && <div className="muted">Нет открытых файлов</div>}
+              {project?.files.map((f) => (
+                <div key={f.path} className={`file ${f.path === activeFile ? 'active' : ''}`}
+                     onClick={() => { setActiveFile(f.path); setDraft(f.content); }}>
+                  <FileCode2 size={15} />{f.path}
+                </div>
+              ))}
+              {selected && graph && (
+                <div className="section">
+                  <NodeInspector selection={selection} graph={graph} onOp={applyGraphOp} />
+                </div>
+              )}
+              {graph?.level === 'method' && <div className="hint">Shift/Ctrl+клик — выделить несколько блоков подряд</div>}
+              {graph?.level === 'overview' && !selected && <div className="hint">Клик по методу — выделить, двойной клик — открыть блок-схему</div>}
+            </div>
+          </aside>
         )}
-        {showVerify && verify && (
+
+        <div className="center" ref={centerRef} style={{ gridArea: 'center' }}>
+          <main className="island" style={{ flex: project ? `${split} 1 0` : '1 1 0' }}>
+            <div className="island-head">
+              <div className="tabs" role="tablist">
+                <button role="tab" className={graph?.level !== 'method' ? 'active' : ''} aria-selected={graph?.level !== 'method'}
+                  disabled={!project} onClick={openOverview}>
+                  <LayoutGrid size={15} />Обзор
+                </button>
+                {openedMethod && (
+                  <button role="tab" className="active" aria-selected title={openedMethod.code ?? undefined}>
+                    <Workflow size={15} />{openedMethod.label}()
+                    <span className="tab-close" role="button" aria-label="Закрыть блок-схему"
+                      onClick={(e) => { e.stopPropagation(); openOverview(); }}><X size={13} /></span>
+                  </button>
+                )}
+              </div>
+              {graph && (
+                <span className="head-hint">
+                  {graph.level === 'method' ? 'Блок-схема метода: клик по блоку — код и правка слева' : 'Классы и их члены; двойной клик по методу — блок-схема'}
+                </span>
+              )}
+            </div>
+            <div className="canvas">
+              {graph ? (
+                <GraphCanvas
+                  graph={graph}
+                  selectedIds={selection.map((n) => n.id)}
+                  onSelect={selectNode}
+                  onOpenMethod={openMethod}
+                  focus={focus}
+                  findings={nodeFindings}
+                  theme={theme}
+                />
+              ) : (
+                <div className="welcome">
+                  <div className="welcome-card">
+                    <h2>Откройте Java-монолит</h2>
+                    <p>Код превратится в граф: классы, методы и блок-схемы. Найденные проблемы можно исправить, а потом доказать тестами, что поведение не изменилось.</p>
+                    <div className="welcome-actions">
+                      <button className="primary" onClick={() => fileInput.current?.click()}><Upload size={16} />Открыть .java</button>
+                      <span className="muted">или перетащите файлы в окно</span>
+                    </div>
+                    <ol>
+                      <li><span><strong>Обзор</strong> — классы и методы; двойной клик открывает блок-схему метода.</span></li>
+                      <li><span><strong>Проблемы</strong> — справа: сложность O(n²), пустые catch, магические числа; часть исправляется автоматически.</span></li>
+                      <li><span><strong>Проверить поведение</strong> — версия 1 и текущая на одних входах, плюс замер скорости.</span></li>
+                    </ol>
+                  </div>
+                </div>
+              )}
+            </div>
+          </main>
+          {/* Без проекта редактор пуст — приветствие занимает всю колонку. */}
+          <div className="splitter" role="separator" aria-orientation="horizontal" aria-label="Граница графа и кода" onPointerDown={startSplit} hidden={!project} />
+          <section className="island" style={{ flex: `${1 - split} 1 0` }} hidden={!project}>
+            <div className="island-head">
+              {activeFile ? (
+                <span className="editor-tab" title={activeFile}>
+                  <FileCode2 size={14} />{activeFile}
+                  {dirty && <span className="dirty-dot" title="Есть непримененные правки" />}
+                </span>
+              ) : <span className="island-title muted">Код</span>}
+              <div className="island-actions">
+                {dirty && <span className="head-hint">Ctrl+S — применить</span>}
+                <button className={dirty ? 'primary' : ''} disabled={!project || !dirty} onClick={applySource}
+                  title="Перестроить граф и диагностику по коду из редактора (Ctrl+S)">Применить код</button>
+              </div>
+            </div>
+            <div className="code">
+              <CodeEditor value={draft} highlight={highlight} onChange={setDraft} onCursorLine={selectLine}
+                onSave={() => { if (project) applySource(); }} theme={theme} />
+            </div>
+          </section>
+        </div>
+
+        {panels.right && (
+          <aside className="island analysis-panel" style={{ gridArea: 'right' }}>
+            <div className="island-head">
+              <div className="tabs" role="tablist">
+                <button role="tab" data-tab="problems" className={rightTab === 'problems' ? 'active' : ''} onClick={() => setRightTab('problems')}>
+                  Проблемы {diagnostics && <span className="tab-count problems-count">{findingsCount}</span>}
+                </button>
+                <button role="tab" className={rightTab === 'metrics' ? 'active' : ''} onClick={() => setRightTab('metrics')}>Метрики</button>
+                <button role="tab" className={rightTab === 'decompose' ? 'active' : ''} onClick={() => setRightTab('decompose')}>Разбиение</button>
+              </div>
+            </div>
+            <div className="island-body pad">
+              {rightTab === 'problems' && (
+                <AnalysisPanel
+                  diagnostics={diagnostics}
+                  onSelect={selectFinding}
+                  onFix={applyFix}
+                  applied={applied}
+                  onVerify={runVerify}
+                  onUndo={undoFix}
+                  onDismissApplied={() => setApplied(null)}
+                  verifying={verifying}
+                />
+              )}
+              {rightTab === 'metrics' && <MetricsPanel diagnostics={diagnostics} />}
+              {rightTab === 'decompose' && (project ? (
+                <DecomposePanel
+                  result={decomp?.result ?? null}
+                  stale={!!decomp && decomp.version !== project.version}
+                  busy={decomposing}
+                  overview={overview}
+                  activeClass={activeClass}
+                  onPropose={proposeDecomposition}
+                  onShowClass={(cls, nodes) => showProposedClass(cls.className, nodes)}
+                  onShowMember={showMember}
+                />
+              ) : <div className="empty-state">Откройте проект, чтобы предложить разбиение</div>)}
+            </div>
+          </aside>
+        )}
+
+        <nav className="stripe" style={{ gridArea: 'rstripe' }} aria-label="Панели справа">
+          <StripeButton icon={<CircleAlert size={18} />} label="Проблемы" badge={findingsCount}
+            active={panels.right && rightTab === 'problems'} onClick={() => openRight('problems')} />
+          <StripeButton icon={<Gauge size={18} />} label="Метрики" active={panels.right && rightTab === 'metrics'} onClick={() => openRight('metrics')} />
+          <StripeButton icon={<Boxes size={18} />} label="Разбиение на классы" active={panels.right && rightTab === 'decompose'} onClick={() => openRight('decompose')} />
+        </nav>
+
+        {panels.bottom && (
+          <section className="island output" style={{ gridArea: 'bottom' }}>
+            <BottomPanel run={run} verify={verify} onOpenReport={() => setShowVerify(true)}
+              stdin={stdin} onStdin={setStdin} onRun={runProgram} running={running} canRun={!!project}
+              tab={bottomTab} onTab={setBottomTab} onHide={() => togglePanel('bottom', false)} />
+          </section>
+        )}
+      </div>
+
+      <footer className="statusbar">
+        <div className="crumbs">
+          {activeFile ? <span>{activeFile}</span> : <span>Нет проекта</span>}
+          {ownerType && <><ChevronRight size={13} /><span>{ownerType.label}</span></>}
+          {openedMethod && <><ChevronRight size={13} /><span>{openedMethod.label}()</span></>}
+          {selected && selected.id !== openedMethod?.id && <><ChevronRight size={13} /><span>{selected.label}{selection.length > 1 ? ` и ещё ${selection.length - 1}` : ''}</span></>}
+        </div>
+        <div className="toolbar-spacer" />
+        {dirty && <span className="status-item warn">Правки не применены</span>}
+        {exported && (
+          <span className={`status-item export-note ${exported.preserved === false ? 'fail' : ''}`} title={exported.fileName}>
+            <Download size={13} />{exported.fileName}{exported.summary && `, ${exported.summary}`}
+          </span>
+        )}
+        {verify && (
+          <button className={`status-item ${verify.behaviorPreserved ? 'ok' : 'fail'}`} onClick={() => setShowVerify(true)} title="Открыть отчёт проверки">
+            {verify.behaviorPreserved ? <CircleCheck size={13} /> : <CircleX size={13} />}
+            {verify.behaviorPreserved ? 'Поведение совпадает' : 'Поведение изменилось'} {verify.passed}/{verify.total}
+          </button>
+        )}
+        {diagnostics && (
+          <button className="status-item" onClick={() => openRight('problems')} title="Проблемы">
+            <CircleAlert size={13} />{findingsCount}
+          </button>
+        )}
+        {project && <span className="status-item">Java · v{project.version}</span>}
+      </footer>
+
+      {showVerify && verify && (
+        <div className="dialog-backdrop" onClick={(e) => { if (e.target === e.currentTarget) setShowVerify(false); }}>
           <VerifyScreen report={verify} running={verifying} onRerun={runVerify} onClose={() => setShowVerify(false)}
             onExport={exportProject} exporting={exporting} />
-        )}
-      </main>
+        </div>
+      )}
 
-      <aside className="analysis-panel">
-        <AnalysisPanel
-          diagnostics={diagnostics}
-          onSelect={selectFinding}
-          onFix={applyFix}
-          applied={applied}
-          onVerify={runVerify}
-          onUndo={undoFix}
-          onDismissApplied={() => setApplied(null)}
-          verifying={verifying}
-        />
-        {project && (
-          <DecomposePanel
-            result={decomp?.result ?? null}
-            stale={!!decomp && decomp.version !== project.version}
-            busy={decomposing}
-            overview={overview}
-            activeClass={activeClass}
-            onPropose={proposeDecomposition}
-            onShowClass={(cls, nodes) => showProposedClass(cls.className, nodes)}
-            onShowMember={showMember}
-          />
-        )}
-      </aside>
-
-      <section className="code">
-        <CodeEditor value={draft} highlight={highlight} onChange={setDraft} onCursorLine={selectLine} />
-      </section>
-
-      <section className="output">
-        <BottomPanel run={run} verify={verify} onOpenReport={() => setShowVerify(true)}
-          stdin={stdin} onStdin={setStdin} onRun={runProgram} running={running} canRun={!!project} />
-      </section>
+      {error && (
+        <div className="notifications" role="alert">
+          <div className="notification">
+            <CircleAlert size={18} />
+            <span className="error">{error}</span>
+            <button className="ghost icon" onClick={() => setError(null)} aria-label="Закрыть уведомление"><X size={15} /></button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

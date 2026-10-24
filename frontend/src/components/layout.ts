@@ -5,21 +5,31 @@ import { buildFlowModel, collectBoxes, toElkGraph, type EdgeTone, type ElkNodeLi
 
 const elk = new ELK();
 
-const EDGE_COLORS: Record<EdgeTone, string> = {
-  yes: '#22c55e',
-  no: '#ef4444',
-  back: '#a855f7',
-  exception: '#ec4899',
-  call: '#94a3b8',
-  contains: '#475569',
-  default: '#94a3b8',
+/**
+ * Цвета рёбер для светлой и тёмной темы (маркеры стрелок React Flow берут цвет строкой в id — CSS-переменная туда
+ * не годится, поэтому hex; при смене темы GraphCanvas перекрашивает рёбра без новой раскладки).
+ */
+export type Theme = 'light' | 'dark';
+export const EDGE_COLORS: Record<Theme, Record<EdgeTone, string>> = {
+  light: { yes: '#7d838e', no: '#9e5c00', back: '#00627a', exception: '#c7222d', call: '#8b919c', contains: '#c9ced6', default: '#7d838e' },
+  dark: { yes: '#6b7078', no: '#d39a52', back: '#4fa9bb', exception: '#e0717a', call: '#6b7078', contains: '#3a3d42', default: '#6b7078' },
 };
+
+/** Стиль ребра по тону и теме: общий для раскладки и для перекраски при смене темы. */
+export function edgePaint(tone: EdgeTone, theme: Theme, base: Partial<Edge> = {}): Partial<Edge> {
+  const color = EDGE_COLORS[theme][tone];
+  return {
+    style: { ...(base.style ?? {}), stroke: color },
+    labelStyle: { fill: color, fontWeight: 500, fontSize: 11 },
+    markerEnd: tone === 'contains' ? undefined : { type: MarkerType.ArrowClosed, color, width: 14, height: 14 },
+  };
+}
 
 /**
  * Раскладка графа через elkjs. Для блок-схемы метода узлы с детьми (parent) становятся рамками-группами:
  * тело цикла, try/catch, switch. Обратные рёбра (возврат к циклу) в раскладке не участвуют и рисуются сбоку.
  */
-export async function layoutGraph(graph: Graph): Promise<{ nodes: Node[]; edges: Edge[] }> {
+export async function layoutGraph(graph: Graph, theme: Theme = 'light'): Promise<{ nodes: Node[]; edges: Edge[] }> {
   const overview = graph.level === 'overview';
   // Обзор: типы — рамки с членами, упакованные сеткой; вызовы — поверх раскладки (иначе плоская лента).
   const model = buildFlowModel(graph, { grouping: true, packed: overview });
@@ -49,7 +59,6 @@ export async function layoutGraph(graph: Graph): Promise<{ nodes: Node[]; edges:
   });
 
   const edges: Edge[] = model.edges.map((fe) => {
-    const color = EDGE_COLORS[fe.tone];
     // Вызовы на обзоре: кривые поверх сетки, приглушённые; у выделенного метода подсвечиваются (GraphCanvas).
     const floating = !fe.inLayout && !fe.back;
     return {
@@ -62,16 +71,14 @@ export async function layoutGraph(graph: Graph): Promise<{ nodes: Node[]; edges:
       data: { tone: fe.tone, floating },
       label: fe.label ?? undefined,
       className: `edge-${fe.tone}`,
-      style: {
-        stroke: color,
-        strokeWidth: 1.5,
-        ...(fe.back || fe.tone === 'call' ? { strokeDasharray: '6 4' } : {}),
-        ...(floating ? { opacity: 0.35 } : {}),
-      },
-      labelStyle: { fill: color, fontWeight: 600, fontSize: 11 },
-      labelBgStyle: { fill: '#0b1220' },
       labelBgPadding: [4, 2] as [number, number],
-      markerEnd: fe.tone === 'contains' ? undefined : { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
+      ...edgePaint(fe.tone, theme, {
+        style: {
+          strokeWidth: 1.25,
+          ...(fe.back || fe.tone === 'call' ? { strokeDasharray: '6 4' } : {}),
+          ...(floating ? { opacity: 0.45 } : {}),
+        },
+      }),
       // Небольшой отступ поворота: при коротком зазоре стандартные 20px закручивают стрелку в петлю.
       pathOptions: { offset: 10, borderRadius: 6 },
       zIndex: 1,

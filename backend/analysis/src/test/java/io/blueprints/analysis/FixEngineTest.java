@@ -224,6 +224,50 @@ class FixEngineTest {
     }
 
     @Test
+    void keepsIndentationOfInsertedStatements() {
+        String source = """
+                class A {
+                    String f(java.util.List<String> items, java.util.List<String> allowed) {
+                        String result = "";
+                        for (String item : items) {
+                            if (allowed.contains(item)) {
+                                result += item;
+                            }
+                        }
+                        return result;
+                    }
+                }
+                """;
+
+        String code = apply(source, "collection-lookup-in-loop").code();
+
+        assertThat(code).contains("\n        var _index = new java.util.HashSet<>(allowed);");
+        assertThat(code).contains("\n        for (String item : items) {");
+        assertThat(code).doesNotContain("\n    var _index");
+    }
+
+    @Test
+    void keepsIndentationOfStringBuilderPreludeAndTail() {
+        String source = """
+                class A {
+                    String f(java.util.List<String> items) {
+                        String result = "";
+                        for (String item : items) {
+                            result += item;
+                        }
+                        return result;
+                    }
+                }
+                """;
+
+        String code = apply(source, "string-concat-in-loop").code();
+
+        assertThat(code).contains("\n        var _sb = new java.lang.StringBuilder();");
+        assertThat(code).contains("\n        result = _sb.toString();");
+        assertThat(code).doesNotContain("\n    var _sb");
+    }
+
+    @Test
     void refusesStaleFindingId() {
         List<SourceFile> files = List.of(new SourceFile("Main.java", "class A { int f() { return 1; } }"));
 

@@ -130,14 +130,14 @@ export function VerifyScreen({ report, running, onRerun, onClose, onExport, expo
           <span>
             {report.passed} из {report.total} тестов
             {report.baselineVersion !== undefined && report.currentVersion !== undefined &&
-              ` · эталон v${report.baselineVersion} → текущая v${report.currentVersion}`}
+              `: версия ${report.currentVersion} против эталона v${report.baselineVersion}`}
           </span>
         </div>
         <div className="vs-actions">
           <button onClick={onRerun} disabled={running}>{running ? 'Проверяем…' : 'Перепроверить'}</button>
           {onExport && (
             <button onClick={onExport} disabled={exporting} title="Zip с текущим кодом и JUnit-тестами против версии 1; запуск — mvn test">
-              {exporting ? 'Готовим архив…' : '⬇ Скачать с JUnit-тестами'}
+              {exporting ? 'Готовим архив…' : 'Скачать с JUnit-тестами'}
             </button>
           )}
           <button onClick={onClose} aria-label="Закрыть">✕</button>
