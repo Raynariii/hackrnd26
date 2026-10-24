@@ -4,7 +4,9 @@ import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.ConditionalExpr;
+import com.github.javaparser.ast.expr.LambdaExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
+import com.github.javaparser.ast.expr.MethodReferenceExpr;
 import com.github.javaparser.ast.stmt.CatchClause;
 import com.github.javaparser.ast.stmt.DoStmt;
 import com.github.javaparser.ast.stmt.ForEachStmt;
@@ -21,7 +23,9 @@ import io.blueprints.core.model.ProjectModel;
  * и оценка Big O из AST.
  *
  * <p>Big O выводится из двух вещей: глубины вложенности циклов (каждый цикл — множитель n)
- * и стоимости операций внутри них по таблице {@link CostModel}. Оценка детерминированная
+ * и стоимости операций внутри них по таблице {@link CostModel}. Терминальная операция Stream API
+ * считается одним проходом O(n), а лямбда в {@code filter}/{@code map}/{@code anyMatch} выполняется
+ * на каждом элементе — линейный поиск в лямбде даёт O(n²). Оценка детерминированная
  * и объяснимая — её можно показать жюри рядом с находкой.
  *
  * <p>Ограничение: рекурсия и {@code while} с неизвестным числом итераций считаются как O(n)
@@ -108,9 +112,16 @@ public final class MetricsCalculator {
             best = callCost.times(BigO.of(loopDepth));
         }
         int childDepth = Ast.isLoop(node) ? loopDepth + 1 : loopDepth;
+        boolean perElement = node instanceof MethodCallExpr call && costModel.iteratesPerElement(call);
         for (Node child : node.getChildNodes()) {
-            best = best.max(estimate(child, childDepth));
+            int depth = perElement && isExecutedForEveryElement(child) ? childDepth + 1 : childDepth;
+            best = best.max(estimate(child, depth));
         }
         return best;
+    }
+
+    /** Лямбда/ссылка на метод, которую операция над потоком или коллекцией вызывает на каждом элементе. */
+    private static boolean isExecutedForEveryElement(Node node) {
+        return node instanceof LambdaExpr || node instanceof MethodReferenceExpr;
     }
 }
