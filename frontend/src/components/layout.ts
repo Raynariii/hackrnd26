@@ -1,42 +1,82 @@
 import ELK from 'elkjs/lib/elk.bundled.js';
-import type { Edge, Node } from '@xyflow/react';
+import { MarkerType, type Edge, type Node } from '@xyflow/react';
 import type { Graph } from '../api/types';
+import { buildFlowModel, collectBoxes, toElkGraph, type EdgeTone, type ElkNodeLike, type FlowItem } from '../flow/methodFlow';
 
 const elk = new ELK();
-const NODE_WIDTH = 260;
-const NODE_HEIGHT = 64;
 
-/** Раскладка графа сверху вниз через elkjs. Вложенность (parent) пока только визуальная — TODO(роль 3). */
+const EDGE_COLORS: Record<EdgeTone, string> = {
+  yes: '#22c55e',
+  no: '#ef4444',
+  back: '#a855f7',
+  exception: '#ec4899',
+  call: '#94a3b8',
+  contains: '#475569',
+  default: '#94a3b8',
+};
+
+/**
+ * Раскладка графа через elkjs. Для блок-схемы метода узлы с детьми (parent) становятся рамками-группами:
+ * тело цикла, try/catch, switch. Обратные рёбра (возврат к циклу) в раскладке не участвуют и рисуются сбоку.
+ */
 export async function layoutGraph(graph: Graph): Promise<{ nodes: Node[]; edges: Edge[] }> {
-  const layout = await elk.layout({
-    id: 'root',
-    layoutOptions: {
-      'elk.algorithm': 'layered',
-      'elk.direction': 'DOWN',
-      'elk.spacing.nodeNode': '40',
-      'elk.layered.spacing.nodeNodeBetweenLayers': '50',
-    },
-    children: graph.nodes.map((n) => ({ id: n.id, width: NODE_WIDTH, height: NODE_HEIGHT })),
-    edges: graph.edges
-      .filter((e) => e.kind !== 'loopBack')
-      .map((e) => ({ id: e.id, sources: [e.from], targets: [e.to] })),
-  });
-  const positions = new Map(layout.children?.map((c) => [c.id, { x: c.x ?? 0, y: c.y ?? 0 }]));
+  const overview = graph.level === 'overview';
+  // Обзор: типы — рамки с членами, упакованные сеткой; вызовы — поверх раскладки (иначе плоская лента).
+  const model = buildFlowModel(graph, { grouping: true, packed: overview });
+  const layout = (await elk.layout(toElkGraph(model) as unknown as Parameters<typeof elk.layout>[0])) as unknown as ElkNodeLike;
+  const boxes = collectBoxes(layout);
 
-  return {
-    nodes: graph.nodes.map((n) => ({
-      id: n.id,
-      type: 'block',
-      position: positions.get(n.id) ?? { x: 0, y: 0 },
-      data: { node: n },
-    })),
-    edges: graph.edges.map((e) => ({
-      id: e.id,
-      source: e.from,
-      target: e.to,
-      label: e.label ?? undefined,
-      animated: e.kind === 'loopBack',
-      style: e.kind === 'call' ? { strokeDasharray: '6 4' } : undefined,
-    })),
-  };
+  const nodes: Node[] = model.items.map((item: FlowItem) => {
+    const box = boxes.get(item.id) ?? { x: 0, y: 0, width: 0, height: 0 };
+    const base = {
+      id: item.id,
+      position: { x: box.x, y: box.y },
+      ...(item.parent ? { parentId: item.parent } : {}),
+    };
+    if (item.type === 'frame') {
+      return {
+        ...base,
+        type: 'frame',
+        data: { node: item.node, frame: true },
+        style: { width: box.width, height: box.height },
+        width: box.width,
+        height: box.height,
+        selectable: false,
+        draggable: false,
+      };
+    }
+    return { ...base, type: 'block', data: { node: item.node, size: item.size } };
+  });
+
+  const edges: Edge[] = model.edges.map((fe) => {
+    const color = EDGE_COLORS[fe.tone];
+    // Вызовы на обзоре: кривые поверх сетки, приглушённые; у выделенного метода подсвечиваются (GraphCanvas).
+    const floating = !fe.inLayout && !fe.back;
+    return {
+      id: fe.edge.id,
+      source: fe.edge.from,
+      target: fe.edge.to,
+      sourceHandle: fe.sourceHandle,
+      targetHandle: fe.targetHandle,
+      type: floating ? 'default' : 'smoothstep',
+      data: { tone: fe.tone, floating },
+      label: fe.label ?? undefined,
+      className: `edge-${fe.tone}`,
+      style: {
+        stroke: color,
+        strokeWidth: 1.5,
+        ...(fe.back || fe.tone === 'call' ? { strokeDasharray: '6 4' } : {}),
+        ...(floating ? { opacity: 0.35 } : {}),
+      },
+      labelStyle: { fill: color, fontWeight: 600, fontSize: 11 },
+      labelBgStyle: { fill: '#0b1220' },
+      labelBgPadding: [4, 2] as [number, number],
+      markerEnd: fe.tone === 'contains' ? undefined : { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
+      // Небольшой отступ поворота: при коротком зазоре стандартные 20px закручивают стрелку в петлю.
+      pathOptions: { offset: 10, borderRadius: 6 },
+      zIndex: 1,
+    };
+  });
+
+  return { nodes, edges };
 }
