@@ -217,12 +217,22 @@ paths:
     get:
       tags: [execution]
       summary: Zip с текущими Java-файлами и сгенерированными JUnit-тестами
+      description: |
+        Maven-проект `<имя>-v<версия>/`: `src/main/java/` — текущая версия, `original/` — версия 1, `changes.diff`,
+        `src/test/java/GoldenMasterTest.java` (JUnit 5) + `golden/NN.in|out|err|exit|name` — эталоны версии 1 на входах
+        verify, `verify-report.json` и `README.md` — результат проверки при экспорте. Запуск: `mvn test`.
       responses:
         '200':
           description: Архив
+          headers:
+            Content-Disposition: { schema: { type: string }, description: 'attachment; filename="<имя>-v<версия>.zip"' }
+            X-Verify-Passed: { schema: { type: string, example: 9/9 }, description: 'Пройдено дифф-тестов при экспорте' }
+            X-Behavior-Preserved: { schema: { type: string, enum: ['true', 'false'] } }
           content:
             application/zip:
               schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
 
   /internal/run:
     servers:
