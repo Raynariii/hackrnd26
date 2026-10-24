@@ -131,6 +131,12 @@ export interface GraphOpRequest {
   name?: string;
 }
 
+/** Результат правки кода сервером (POST /fixes/{findingId}): новое состояние + unified diff. */
+export interface ChangeResult {
+  state: ProjectState;
+  diff: string;
+}
+
 export interface VerifyRequest {
   /** stdin-входы; если пусто — сервер берёт сохранённые и сгенерированные. */
   inputs?: string[];

@@ -99,11 +99,20 @@ h3 { margin: 8px 0; font-size: 13px; color: var(--muted); text-transform: upperc
 .react-flow__node-frame { pointer-events: none; }
 .react-flow__edge-textbg { rx: 4; }
 
-.finding { display: block; width: 100%; text-align: left; margin-bottom: 8px; border-left-width: 3px; }
+.finding {
+  display: block; width: 100%; text-align: left; margin-bottom: 8px; cursor: pointer;
+  background: var(--panel); border: 1px solid var(--border); border-left-width: 3px; border-radius: 6px; padding: 6px 12px;
+}
+.finding:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.finding-fix { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; cursor: default; }
+.finding-fix button { padding: 3px 10px; font-size: 12px; }
+.finding-fix-desc { font-size: 12px; }
+.finding-error { font-size: 12px; margin-top: 4px; cursor: default; }
 .finding.sev-high { border-left-color: var(--fail); }
 .finding.sev-medium { border-left-color: #f59e0b; }
 .finding.sev-low { border-left-color: var(--accent); }
-.finding-head { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
+.finding-head { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; margin-bottom: 4px; }
+.finding-head strong { flex-basis: 100%; }
 .badge { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--border); }
 .complexity { margin-top: 4px; font-family: ui-monospace, monospace; }
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -189,3 +198,12 @@ button.danger { border-color: rgba(239, 68, 68, .6); color: #fca5a5; }
 .kind-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .chip { padding: 2px 8px; font-size: 12px; border-radius: 999px; }
 .chip.active { border-color: var(--accent); background: rgba(59, 130, 246, .2); }
+
+/* ---- применённое авто-исправление ---- */
+.applied-fix { border: 1px solid rgba(34, 197, 94, .5); background: rgba(34, 197, 94, .08); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 4px; }
+.applied-head { display: flex; justify-content: space-between; align-items: center; }
+.applied-fix summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+.diff { margin: 4px 0 0; padding: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; font-size: 11px; max-height: 260px; overflow: auto; }
+.diff-add { display: block; background: rgba(34, 197, 94, .18); }
+.diff-del { display: block; background: rgba(239, 68, 68, .18); }
+.diff-hunk { display: block; color: var(--muted); }

@@ -70,3 +70,28 @@ test('строка → блок на настоящей схеме: строка
   const start = g.nodes[0];
   assert.equal(nodeAtLine(g, orders.file, start.range!.endLine)?.id, start.id);
 });
+
+test('авто-исправления FixEngine: после каждого метод находится заново, изменённая строка — в его блок-схеме', async () => {
+  const { default: fixes } = await import('../mocks/real/OrdersFixes.json', { with: { type: 'json' } });
+  const { changedLineNumbers, findMethodAgain } = await import('./edit.ts');
+  let applied = 0;
+  for (const [id, rec] of Object.entries(fixes as Record<string, { rejected?: string; methodId?: string; diff?: string; after?: RealDemo }>)) {
+    if (rec.rejected) {
+      assert.match(rec.rejected, /вручную|небезопасно|меняется/, id);
+      continue;
+    }
+    applied++;
+    const after = rec.after!;
+    assert.ok(rec.diff!.includes('\n+'), `${id}: в диффе есть добавленные строки`);
+    assert.ok(after.diagnostics.findings.every((f) => f.id !== id), `${id}: исправленная находка ушла`);
+    // метод, где была находка: id в исходном обзоре = id в обзоре после (правка ниже его начала) — проверяем через findMethodAgain
+    const methodBefore = orders.overview.nodes.find((n) => n.label === after.overview.nodes.find((m) => m.id === rec.methodId)!.label)!;
+    const again = findMethodAgain(orders.overview, methodBefore.id, after.overview);
+    assert.equal(again, rec.methodId, id);
+    // как в App: из изменённых строк берём первую, что попадает в блок-схему открытого метода
+    const lines = changedLineNumbers(orders.source, after.source!);
+    const hit = lines.map((l) => nodeAtLine(after.methods[rec.methodId!], orders.file, l)).find(Boolean);
+    assert.ok(hit, `${id}: изменённые строки ${lines} → блок метода`);
+  }
+  assert.equal(applied, 4);
+});

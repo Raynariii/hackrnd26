@@ -1,6 +1,4 @@
-import type { ApiError, Diagnostics, Graph, GraphOpRequest, ProjectState, RunResult, SourceFile, VerifyReport, VerifyRequest } from './types';
-import { mockApi } from '../mocks/mockApi';
-
+import type { ApiError, ChangeResult, Diagnostics, Graph, GraphOpRequest, ProjectState, RunResult, SourceFile, VerifyReport, VerifyRequest } from './types';
 import { ApiRequestError } from './errors';
 
 export { ApiRequestError };
@@ -28,6 +26,9 @@ const realApi = {
     request<Graph>('GET', `/projects/${id}/graph?level=${level}${method ? `&method=${encodeURIComponent(method)}` : ''}`),
   /** Операция над графом → изменение AST → новый код; граф после неё перечитывается (id пересчитаны). */
   graphOp: (id: string, body: GraphOpRequest) => request<ProjectState>('POST', `/projects/${id}/graph/ops`, body),
+  /** Авто-исправление находки (FixEngine роли 2). Находка должна быть из текущей версии. */
+  applyFix: (id: string, findingId: string, version: number) =>
+    request<ChangeResult>('POST', `/projects/${id}/fixes/${encodeURIComponent(findingId)}`, { version }),
   getDiagnostics: (id: string) => request<Diagnostics>('GET', `/projects/${id}/diagnostics`),
   run: (id: string, stdin = '') => request<RunResult>('POST', `/projects/${id}/run`, { stdin }),
   verify: (id: string, body: VerifyRequest = {}) => request<VerifyReport>('POST', `/projects/${id}/verify`, body),
@@ -35,5 +36,9 @@ const realApi = {
 
 export type Api = typeof realApi;
 
-/** VITE_USE_MOCKS=true — фронт работает на фикстурах без бэкенда (npm run dev:mock). */
-export const api: Api = import.meta.env.VITE_USE_MOCKS === 'true' ? mockApi : realApi;
+/**
+ * VITE_USE_MOCKS=true — фронт работает на фикстурах без бэкенда (npm run dev:mock).
+ * Моки грузятся динамически: в обычной сборке их код и снимки ядра (~сотни КБ) не скачиваются.
+ */
+export const api: Api =
+  import.meta.env.VITE_USE_MOCKS === 'true' ? (await import('../mocks/mockApi')).mockApi : realApi;

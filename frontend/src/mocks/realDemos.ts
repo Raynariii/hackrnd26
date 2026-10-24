@@ -6,6 +6,7 @@ import type { Diagnostics, Graph } from '../api/types';
 import flow from './real/Flow.json';
 import orders from './real/OrdersMonolith.json';
 import mainOps from './real/MainOps.json';
+import ordersFixes from './real/OrdersFixes.json';
 
 export interface RealDemo {
   file: string;
@@ -41,3 +42,16 @@ export const realDemos: Record<string, RealDemo> = {
   flow: flow as unknown as RealDemo,
   orders: orders as unknown as RealDemo,
 };
+
+/**
+ * Авто-исправления FixEngine (роль 2) на OrdersMonolith.java из исходного состояния: снимок «после»
+ * (исходник, обзор, блок-схемы всех методов, диагностика) и unified diff — или текст отказа.
+ */
+export type RecordedFix =
+  | { rejected: string }
+  | { description: string; methodId: string; diff: string; after: Omit<RealDemo, 'file'> };
+
+export const ordersFixesDemo = ordersFixes as unknown as Record<string, RecordedFix>;
+
+/** Отказ FixEngine для единственной находки Main.java (базовый мок): result меняется внутри цикла. */
+export const MAIN_FIX_REJECTION = 'Коллекция result меняется внутри цикла: индекс устарел бы, исправление вручную';

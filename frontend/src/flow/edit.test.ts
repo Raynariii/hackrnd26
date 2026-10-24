@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Graph, GraphNode } from '../api/types';
 import mainOps from '../mocks/real/MainOps.json' with { type: 'json' };
-import { allowedOps, findMethodAgain, firstChangedLine } from './edit.ts';
+import { allowedOps, changedLineNumbers, findMethodAgain, firstChangedLine } from './edit.ts';
 import { nodeAtLine } from './sourceMap.ts';
 
 interface Snap { source: string; overview: Graph; flow: Graph }
@@ -50,4 +50,12 @@ test('findMethodAgain: сигнатуру поменяли — находим п
 test('firstChangedLine: без изменений — null', () => {
   assert.equal(firstChangedLine(files('a\nb'), files('a\nb')), null);
   assert.deepEqual(firstChangedLine(files('a\nb'), files('a\nc')), { file: demo.file, line: 2 });
+});
+
+test('changedLineNumbers: вставка, замена, правки в двух местах, удаление', () => {
+  assert.deepEqual(changedLineNumbers('a\nb\nc', 'a\nX\nb\nc'), [2]);
+  assert.deepEqual(changedLineNumbers('a\nb\nc', 'a\nB\nc'), [2]);
+  assert.deepEqual(changedLineNumbers('a\nb\nc\nd\ne', 'K\na\nb\nc\nD\ne'), [1, 5]);
+  assert.deepEqual(changedLineNumbers('a\nb\nc', 'a\nc'), []);
+  assert.deepEqual(changedLineNumbers('a', 'a'), []);
 });

@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiRequestError } from './api/client';
-import type { Diagnostics, Finding, Graph, GraphNode, GraphOpRequest, ProjectState, RunResult, SourceRange, VerifyReport } from './api/types';
-import { AnalysisPanel } from './components/AnalysisPanel';
+import type { Diagnostics, Finding, Graph, GraphNode, GraphOpRequest, ProjectState, RunResult, SourceFile, SourceRange, VerifyReport } from './api/types';
+import { AnalysisPanel, type AppliedFix } from './components/AnalysisPanel';
 import { BottomPanel } from './components/BottomPanel';
 import { CodeEditor } from './components/CodeEditor';
 import { GraphCanvas } from './components/GraphCanvas';
 import { NodeInspector } from './components/NodeInspector';
 import { VerifyScreen } from './components/VerifyScreen';
-import { findMethodAgain, firstChangedLine } from './flow/edit';
+import { changedLineNumbers, findMethodAgain, firstChangedLine } from './flow/edit';
 import { findingsByNode, nodeAtLine, nodeForFinding } from './flow/sourceMap';
 
 export function App() {
@@ -26,6 +26,9 @@ export function App() {
   const [verify, setVerify] = useState<VerifyReport | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [showVerify, setShowVerify] = useState(false);
+  /** Последнее авто-исправление и файлы до него — для «Отменить» (PUT /source со старым текстом). */
+  const [applied, setApplied] = useState<AppliedFix | null>(null);
+  const [beforeFix, setBeforeFix] = useState<SourceFile[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const nodeFindings = useMemo(
@@ -82,7 +85,13 @@ export function App() {
     setDiagnostics(await api.getDiagnostics(next.id));
 
     if (changed) {
-      const node = selectChanged ? nodeAtLine(target, changed.file, changed.line) : null;
+      // Первая изменённая строка, которая есть в открытом графе: правка может начаться вне метода
+      // (константа в начале класса после авто-исправления), а выделить надо блок в методе.
+      const oldText = prev.files.find((f) => f.path === changed.file)?.content ?? '';
+      const newText = next.files.find((f) => f.path === changed.file)?.content ?? '';
+      const node = selectChanged
+        ? changedLineNumbers(oldText, newText).map((l) => nodeAtLine(target, changed.file, l)).find(Boolean) ?? null
+        : null;
       setSelected(node);
       setHighlight(node?.range ?? { file: changed.file, startLine: changed.line, endLine: changed.line });
       if (node) setFocus((f) => ({ id: node.id, seq: (f?.seq ?? 0) + 1 }));
@@ -133,6 +142,34 @@ export function App() {
       } finally {
         setVerifying(false);
       }
+    });
+
+  /**
+   * Находка → «Исправить автоматически» → новый код и граф → сразу дифф-тесты и замер (PLAN.md §1, п. 4):
+   * оптимизация считается сделанной только при зелёной проверке поведения.
+   */
+  const applyFix = async (finding: Finding): Promise<string | null> => {
+    if (!project) return 'Нет проекта';
+    try {
+      const prev = project;
+      const result = await api.applyFix(project.id, finding.id, project.version);
+      await refreshAfterChange(prev, result.state, true);
+      setApplied({ title: finding.title, description: finding.fix?.description ?? '', diff: result.diff });
+      setBeforeFix(prev.files);
+      void runVerify();
+      return null;
+    } catch (e) {
+      if (e instanceof ApiRequestError) return e.status === 409 ? 'Код изменился — диагностика устарела, она перечитана' : e.message;
+      return String(e);
+    }
+  };
+
+  const undoFix = () =>
+    guard(async () => {
+      if (!project || !beforeFix) return;
+      await refreshAfterChange(project, await api.updateSource(project.id, project.version, beforeFix), true);
+      setApplied(null);
+      setBeforeFix(null);
     });
 
   const selectNode = (node: GraphNode) => {
@@ -216,7 +253,16 @@ export function App() {
       </main>
 
       <aside className="analysis-panel">
-        <AnalysisPanel diagnostics={diagnostics} onSelect={selectFinding} />
+        <AnalysisPanel
+          diagnostics={diagnostics}
+          onSelect={selectFinding}
+          onFix={applyFix}
+          applied={applied}
+          onVerify={runVerify}
+          onUndo={undoFix}
+          onDismissApplied={() => setApplied(null)}
+          verifying={verifying}
+        />
       </aside>
 
       <section className="code">

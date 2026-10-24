@@ -1,11 +1,14 @@
-import type { Diagnostics, Graph, GraphOpRequest, ProjectState, RunResult, SourceFile, VerifyReport, VerifyRequest } from '../api/types';
+import type { ChangeResult, Diagnostics, Graph, GraphOpRequest, ProjectState, RunResult, SourceFile, VerifyReport, VerifyRequest } from '../api/types';
 import { mockDiagnostics, mockMethodFlow, mockOverview, mockProject, mockRun, mockVerify, mockVerifyFail } from './fixtures';
-import { opsDemo, realDemos, type Snapshot } from './realDemos';
+import { MAIN_FIX_REJECTION, opsDemo, ordersFixesDemo, realDemos, type RealDemo, type Snapshot } from './realDemos';
 import { ApiRequestError } from '../api/errors';
 
 /** ?demo=flow | ?demo=orders — настоящие графы ядра вместо ручного мока (см. realDemos.ts). */
 const params = new URLSearchParams(globalThis.location?.search ?? '');
-const demo = realDemos[new URLSearchParams(globalThis.location?.search ?? '').get('demo') ?? ''];
+const demoName = params.get('demo') ?? '';
+/** Текущее состояние настоящего демо; авто-исправление заменяет его снимком «после». */
+let demo: RealDemo | undefined = realDemos[demoName];
+const demoOriginal = demo;
 
 const delay = <T,>(value: T) => new Promise<T>((resolve) => setTimeout(() => resolve(structuredClone(value)), 150));
 
@@ -56,6 +59,16 @@ export const mockApi = {
     snapshot = rec.after;
     project = { ...project, version: project.version + 1, files: [{ path: opsDemo.file, content: rec.after.source }] };
     return delay(project);
+  },
+  applyFix: (_id: string, findingId: string, version: number): Promise<ChangeResult> => {
+    if (version !== project.version) return Promise.reject(new ApiRequestError(409, { error: 'version_conflict', message: 'Проект изменился' }));
+    if (!demo && !opsMode) return unprocessable(MAIN_FIX_REJECTION);
+    const rec = demoName === 'orders' && demo === demoOriginal ? ordersFixesDemo[findingId] : undefined;
+    if (!rec) return unprocessable('В демо записаны исправления только из исходного состояния ?demo=orders (обновите страницу)');
+    if ('rejected' in rec) return unprocessable(rec.rejected);
+    demo = { ...demoOriginal!, ...rec.after };
+    project = { ...project, version: project.version + 1, files: [{ path: demo.file, content: demo.source }] };
+    return delay({ state: project, diff: rec.diff });
   },
   getDiagnostics: (_id: string): Promise<Diagnostics> =>
     delay(

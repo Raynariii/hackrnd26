@@ -92,3 +92,36 @@ export function firstChangedLine(before: SourceFile[], after: SourceFile[]): { f
   }
   return null;
 }
+
+/**
+ * Номера строк нового текста, которых нет в старом (добавленные/изменённые), по LCS построчно.
+ * Общие начало и конец отрезаются, поэтому на правке в одном месте файла это почти бесплатно.
+ */
+export function changedLineNumbers(oldText: string, newText: string): number[] {
+  const a = oldText.split('\n');
+  const b = newText.split('\n');
+  let pre = 0;
+  while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
+  let suf = 0;
+  while (suf < a.length - pre && suf < b.length - pre && a[a.length - 1 - suf] === b[b.length - 1 - suf]) suf++;
+  const x = a.slice(pre, a.length - suf);
+  const y = b.slice(pre, b.length - suf);
+  const n = x.length;
+  const m = y.length;
+  // lcs[i][j] — длина LCS суффиксов x[i..], y[j..]
+  const lcs = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      lcs[i][j] = x[i] === y[j] ? lcs[i + 1][j + 1] + 1 : Math.max(lcs[i + 1][j], lcs[i][j + 1]);
+    }
+  }
+  const out: number[] = [];
+  let i = 0;
+  let j = 0;
+  while (j < m) {
+    if (i < n && x[i] === y[j]) { i++; j++; }
+    else if (i < n && lcs[i + 1][j] >= lcs[i][j + 1]) i++;
+    else { out.push(pre + j + 1); j++; }
+  }
+  return out;
+}
