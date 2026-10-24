@@ -14,7 +14,7 @@ import java.util.Map;
 
 /**
  * Минимальная реализация для каркаса: overview = типы + их члены с рёбрами contains.
- * TODO(роль 1): рёбра call через SymbolSolver, methodFlow — блок-схема метода.
+ * methodFlow — {@link MethodFlowBuilder}. TODO(роль 1): рёбра call через SymbolSolver.
  */
 public final class DefaultGraphBuilder implements GraphBuilder {
 
@@ -57,7 +57,7 @@ public final class DefaultGraphBuilder implements GraphBuilder {
 
     @Override
     public Graph methodFlow(ProjectModel model, String methodNodeId) {
-        throw new UnsupportedOperationException("methodFlow ещё не реализован (роль 1)");
+        return MethodFlowBuilder.build(model, methodNodeId);
     }
 
     private static GraphNode node(ProjectModel model, String file, Node ast, String id, NodeKind kind,
