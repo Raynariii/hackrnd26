@@ -128,6 +128,11 @@ paths:
     post:
       tags: [analysis]
       summary: Применить исправление находки
+      description: |
+        FixEngine правит AST копии → quality gate: новая версия компилируется и на тех же входах (корпус, прошлые /run,
+        граничные) ведёт себя как текущая → только тогда коммитится новая версия. Ошибки 422: `fix_not_applicable`
+        (находка устарела или исправление небезопасно), `quality_gate_failed` (поведение разошлось; сессия не меняется),
+        `parse_error`.
       requestBody:
         content:
           application/json:
@@ -146,6 +151,7 @@ paths:
     post:
       tags: [analysis]
       summary: Предложить (apply=false) или применить (apply=true) разбиение монолита
+      description: 'v1: только предложение; apply=true отвечает 501 not_implemented (LEAD.md G7).'
       requestBody:
         required: true
         content:
@@ -157,6 +163,11 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DecomposeResult' }
+        '501':
+          description: apply=true пока не реализовано
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
 
   /projects/{projectId}/run:
     parameters: [{ $ref: '#/components/parameters/ProjectId' }]
@@ -424,6 +435,12 @@ components:
       properties:
         state: { $ref: '#/components/schemas/ProjectState' }
         diff: { type: string, description: 'Unified diff относительно предыдущей версии' }
+        description: { type: [string, 'null'], description: 'Что сделано (для уведомления в UI)' }
+        verify:
+          description: 'Отчёт quality gate: предыдущая версия vs новая'
+          oneOf:
+            - { $ref: '#/components/schemas/VerifyReport' }
+            - { type: 'null' }
 
     DecomposeRequest:
       allOf:
@@ -448,6 +465,10 @@ components:
               members:
                 type: array
                 items: { type: string, description: 'Сигнатура метода или имя поля' }
+        notes:
+          type: array
+          items: { type: string }
+          description: 'Пояснения: какой класс разбит и на сколько частей, что не удалось распределить'
         result: { oneOf: [{ $ref: '#/components/schemas/ChangeResult' }, { type: 'null' }] }
 
     RunProjectRequest:
