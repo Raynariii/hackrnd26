@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Background, Controls, MiniMap, ReactFlow, type Edge, type Node } from '@xyflow/react';
+import { Background, Controls, MiniMap, ReactFlow, useEdgesState, useNodesState, type Edge, type Node } from '@xyflow/react';
 import type { Graph, GraphNode } from '../api/types';
 import { BlockNode, FrameNode, kindColor } from './BlockNode';
 import { layoutGraph } from './layout';
@@ -13,15 +13,16 @@ interface Props {
   onOpenMethod: (node: GraphNode) => void;
 }
 
-interface Laid {
-  nodes: Node[];
-  edges: Edge[];
-  /** Счётчик раскладок: новый граф → новый key → ReactFlow заново делает fitView. */
-  rev: number;
-}
+const nodeOf = (n: Node) => (n.data as { node: GraphNode }).node;
 
 export function GraphCanvas({ graph, selectedId, onSelect, onOpenMethod }: Props) {
-  const [laid, setLaid] = useState<Laid | null>(null);
+  // Узлы живут в состоянии и принимают изменения от React Flow (размеры, выделение). Если отдавать новые
+  // объекты на каждый рендер без onNodesChange, React Flow теряет замеры и на кадр прячет узлы —
+  // второй клик двойного клика уходит в пустой холст, и метод не открывается.
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  /** Счётчик раскладок: новый граф → новый key → ReactFlow заново делает fitView. */
+  const [rev, setRev] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -31,27 +32,39 @@ export function GraphCanvas({ graph, selectedId, onSelect, onOpenMethod }: Props
       .then((result) => {
         if (cancelled) return;
         setError(null);
-        setLaid((prev) => ({ ...result, rev: (prev?.rev ?? 0) + 1 }));
+        setNodes(result.nodes);
+        setEdges(result.edges);
+        setRev((r) => r + 1);
       })
       .catch((e: unknown) => !cancelled && setError(`Не удалось разложить граф: ${String(e)}`));
     return () => {
       cancelled = true;
     };
-  }, [graph]);
+  }, [graph, setNodes, setEdges]);
+
+  // Выделение задаёт App (клик по узлу, находке, строке кода): меняем только узлы, у которых оно поменялось.
+  useEffect(() => {
+    setNodes((nds) =>
+      nds.map((n) => {
+        const want = n.type === 'block' && n.id === selectedId;
+        return Boolean(n.selected) === want ? n : { ...n, selected: want };
+      }),
+    );
+  }, [selectedId, rev, setNodes]);
 
   if (error) return <div className="empty error">{error}</div>;
-  if (!laid) return <div className="empty">Раскладываем граф…</div>;
-
-  const nodes = laid.nodes.map((n) => (n.type === 'block' ? { ...n, selected: n.id === selectedId } : n));
-  const nodeOf = (n: Node) => (n.data as { node: GraphNode }).node;
+  if (rev === 0) return <div className="empty">Раскладываем граф…</div>;
 
   return (
     <ReactFlow
-      key={laid.rev}
+      key={rev}
       nodes={nodes}
-      edges={laid.edges}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
       nodeTypes={nodeTypes}
-      onNodeClick={(_, n) => onSelect(nodeOf(n))}
+      nodesConnectable={false}
+      onNodeClick={(_, n) => n.type === 'block' && onSelect(nodeOf(n))}
       onNodeDoubleClick={(_, n) => {
         const node = nodeOf(n);
         if (node.kind === 'method' || node.kind === 'constructor') onOpenMethod(node);

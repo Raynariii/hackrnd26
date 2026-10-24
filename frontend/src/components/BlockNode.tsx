@@ -44,7 +44,8 @@ export function BlockNode({ data, selected }: NodeProps) {
     >
       {outlined && <ShapeOutline shape={shape} size={size} color={color} />}
       <Handle type="target" id={HANDLE.in} position={Position.Top} />
-      <Handle type="target" id={HANDLE.backIn} position={Position.Right} className="handle-side" style={{ top: '30%' }} />
+      {/* У ромба и шестиугольника боковой угол — посередине высоты, у прямоугольников ручки разнесены. */}
+      <Handle type="target" id={HANDLE.backIn} position={Position.Right} className="handle-side" style={{ top: outlined ? '50%' : '30%' }} />
       <div className="block-body">
         <div className="block-title" style={{ color }}>
           {node.label}
@@ -56,7 +57,8 @@ export function BlockNode({ data, selected }: NodeProps) {
       </div>
       <Handle type="source" id={HANDLE.out} position={Position.Bottom} />
       {shape === 'decision' && <Handle type="source" id={HANDLE.no} position={Position.Right} />}
-      <Handle type="source" id={HANDLE.backOut} position={Position.Right} className="handle-side" style={{ top: '70%' }} />
+      <Handle type="source" id={HANDLE.backOut} position={Position.Right} className="handle-side" style={{ top: outlined ? '50%' : '70%' }} />
+      {shape === 'loop' && <Handle type="source" id={HANDLE.exit} position={Position.Left} className="handle-side" />}
     </div>
   );
 }

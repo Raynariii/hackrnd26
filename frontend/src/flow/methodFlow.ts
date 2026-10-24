@@ -77,6 +77,8 @@ export const HANDLE = {
   no: 'no',
   backIn: 'back-in',
   backOut: 'back-out',
+  /** Выход из цикла — слева от заголовка, чтобы не идти сквозь тело. */
+  exit: 'exit',
 } as const;
 
 export type EdgeTone = 'yes' | 'no' | 'back' | 'exception' | 'call' | 'contains' | 'default';
@@ -191,11 +193,14 @@ export function buildFlowModel(graph: Graph, options: BuildOptions): FlowModel {
     .map((e) => {
       const back = isBack(e);
       const source = byId.get(e.from)!;
+      const shape = nodeShape(source.kind);
       const sourceHandle = back
         ? HANDLE.backOut
-        : e.kind === 'false' && nodeShape(source.kind) === 'decision'
+        : e.kind === 'false' && shape === 'decision'
           ? HANDLE.no
-          : HANDLE.out;
+          : e.kind === 'loopExit' && shape === 'loop'
+            ? HANDLE.exit
+            : HANDLE.out;
       return {
         edge: e,
         back,
@@ -242,7 +247,7 @@ const ROOT_OPTIONS: Record<string, string> = {
   'elk.direction': 'DOWN',
   'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
   'elk.spacing.nodeNode': '36',
-  'elk.layered.spacing.nodeNodeBetweenLayers': '44',
+  'elk.layered.spacing.nodeNodeBetweenLayers': '56',
   'elk.layered.spacing.edgeNodeBetweenLayers': '20',
   'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
   'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',

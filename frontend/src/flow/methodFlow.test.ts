@@ -96,6 +96,12 @@ test('подписи Да/Нет по умолчанию и ручка «Нет�
   assert.equal(e5.sourceHandle, 'out');
 });
 
+test('выход из цикла идёт с левой ручки заголовка, вход в тело — снизу', () => {
+  const m = buildFlowModel(loopFlow, { grouping: true });
+  assert.equal(m.edges.find((e) => e.edge.id === 'e8')!.sourceHandle, 'exit');
+  assert.equal(m.edges.find((e) => e.edge.id === 'e4')!.sourceHandle, 'out');
+});
+
 test('обратные рёбра: loopBack и переход изнутри тела к заголовку своего цикла', () => {
   const m = buildFlowModel(loopFlow, { grouping: true });
   const back = m.edges.filter((e) => e.back).map((e) => e.edge.id).sort();

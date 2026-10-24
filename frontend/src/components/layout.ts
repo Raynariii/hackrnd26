@@ -66,6 +66,8 @@ export async function layoutGraph(graph: Graph): Promise<{ nodes: Node[]; edges:
       labelBgStyle: { fill: '#0b1220' },
       labelBgPadding: [4, 2] as [number, number],
       markerEnd: fe.tone === 'contains' ? undefined : { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
+      // Небольшой отступ поворота: при коротком зазоре стандартные 20px закручивают стрелку в петлю.
+      pathOptions: { offset: 10, borderRadius: 6 },
       zIndex: 1,
     };
   });
