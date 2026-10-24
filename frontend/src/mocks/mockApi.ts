@@ -1,5 +1,5 @@
 import type { ChangeResult, Diagnostics, Graph, GraphOpRequest, ProjectState, RunResult, SourceFile, VerifyReport, VerifyRequest } from '../api/types';
-import { mockDiagnostics, mockMethodFlow, mockOverview, mockProject, mockRun, mockVerify, mockVerifyFail } from './fixtures';
+import { mockDiagnostics, mockMethodFlow, mockOverview, mockProject, mockRun, mockVerify, mockVerifyFail, mockVerifyNoCompile } from './fixtures';
 import { MAIN_FIX_REJECTION, opsDemo, ordersFixesDemo, realDemos, type RealDemo, type Snapshot } from './realDemos';
 import { ApiRequestError } from '../api/errors';
 
@@ -76,7 +76,10 @@ export const mockApi = {
     if ('rejected' in rec) return unprocessable(rec.rejected);
     demo = { ...demoOriginal!, ...rec.after };
     project = { ...project, version: project.version + 1, files: [{ path: demo.file, content: demo.source }] };
-    return delay({ state: project, diff: rec.diff });
+    // Как в api (PR #21): описание от FixEngine и отчёт quality gate. Gate в моке — итог без кейсов:
+    // сервер прогоняет предыдущую и новую версию на одних входах, здесь его не повторить.
+    const gate: VerifyReport = { baselineVersion: version, currentVersion: project.version, compiled: true, behaviorPreserved: true, passed: 6, total: 6, cases: [] };
+    return delay({ state: project, diff: rec.diff, description: rec.description, verify: gate });
   },
   getDiagnostics: (_id: string): Promise<Diagnostics> =>
     delay(
@@ -88,7 +91,8 @@ export const mockApi = {
     ),
   run: (_id: string, _stdin = ''): Promise<RunResult> => delay(mockRun),
   verify: (_id: string, body: VerifyRequest = {}): Promise<VerifyReport> => {
-    const report = params.get('verify') === 'fail' ? mockVerifyFail : mockVerify;
+    const mode = params.get('verify');
+    const report = mode === 'fail' ? mockVerifyFail : mode === 'nocompile' ? mockVerifyNoCompile : mockVerify;
     const withVersion = { ...report, currentVersion: project.version };
     return delay(body.benchmark ? withVersion : { ...withVersion, benchmark: undefined });
   },

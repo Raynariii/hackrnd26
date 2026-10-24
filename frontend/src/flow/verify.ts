@@ -27,16 +27,29 @@ export interface CaseMismatch {
   diff: LineDiff | null;
 }
 
-/** Что разошлось в тест-кейсе — для подсветки. Сервер нормализует вывод сам (VerifyCase), здесь только показ. */
+const CHANNELS: Channel[] = ['stdout', 'stderr', 'exitCode', 'compile', 'timeout'];
+
+/**
+ * Что разошлось в тест-кейсе — для подсветки. Сервер (VerifyService) уже нормализовал вывод и пишет в mismatch
+ * причины через «; » с префиксом канала: «stdout: …», «exitCode: ожидался 0, получен 1», «compile: …».
+ * Канал берём оттуда; номер строки считаем сами по присланным выводам. Если текущая версия не
+ * компилируется, у кейса нет actual.
+ */
 export function caseMismatch(c: VerifyCase): CaseMismatch | null {
   if (c.ok) return null;
   const e: RunResult | undefined = c.expected;
   const a: RunResult | undefined = c.actual;
-  if (a && !a.compile.ok) return { channel: 'compile', diff: null };
+  const prefix = c.mismatch?.split(':', 1)[0].trim() as Channel | undefined;
+  const fromServer = prefix && CHANNELS.includes(prefix) ? prefix : null;
+  const diffOf = (ch: Channel) =>
+    ch === 'stdout' ? firstDiff(e?.stdout, a?.stdout) : ch === 'stderr' ? firstDiff(e?.stderr, a?.stderr) : null;
+
+  if (fromServer === 'compile' || (a && !a.compile.ok) || (!a && !fromServer)) return { channel: 'compile', diff: null };
+  if (fromServer) return { channel: fromServer, diff: a ? diffOf(fromServer) : null };
   if (a?.timedOut && !e?.timedOut) return { channel: 'timeout', diff: null };
-  const out = firstDiff(e?.stdout, a?.stdout);
+  const out = diffOf('stdout');
   if (out) return { channel: 'stdout', diff: out };
-  const err = firstDiff(e?.stderr, a?.stderr);
+  const err = diffOf('stderr');
   if (err) return { channel: 'stderr', diff: err };
   if ((e?.exitCode ?? null) !== (a?.exitCode ?? null)) return { channel: 'exitCode', diff: null };
   // Сервер сказал «не совпало», а в присланных полях разницы не видно — покажем его текст mismatch.

@@ -37,6 +37,9 @@ export function App() {
   /** Запрос «покажи узел на холсте» — когда выбор пришёл не с самого холста. */
   const [focus, setFocus] = useState<{ id: string; seq: number } | null>(null);
   const [run, setRun] = useState<RunResult | null>(null);
+  /** stdin для «Запуска»: программы со Scanner читают ввод; сервер запоминает его и для дифф-тестов verify. */
+  const [stdin, setStdin] = useState('');
+  const [running, setRunning] = useState(false);
   const [verify, setVerify] = useState<VerifyReport | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [showVerify, setShowVerify] = useState(false);
@@ -145,6 +148,17 @@ export function App() {
       await refreshAfterChange(project, await api.updateSource(project.id, project.version, files), true);
     });
 
+  const runProgram = () =>
+    guard(async () => {
+      if (!project) return;
+      setRunning(true);
+      try {
+        setRun(await api.run(project.id, stdin));
+      } finally {
+        setRunning(false);
+      }
+    });
+
   /** Дифф-тесты версия 1 vs текущая + замер времени; отчёт открывается поверх холста. */
   const runVerify = () =>
     guard(async () => {
@@ -168,7 +182,13 @@ export function App() {
       const prev = project;
       const result = await api.applyFix(project.id, finding.id, project.version);
       await refreshAfterChange(prev, result.state, true);
-      setApplied({ title: finding.title, description: finding.fix?.description ?? '', diff: result.diff });
+      setApplied({
+        title: finding.title,
+        // описание от сервера (что именно сделал FixEngine), иначе — предложенное анализатором
+        description: result.description ?? finding.fix?.description ?? '',
+        diff: result.diff,
+        gate: result.verify ?? null,
+      });
       setBeforeFix(prev.files);
       void runVerify();
       return null;
@@ -238,7 +258,7 @@ export function App() {
           setOverview(ov);
           showGraph(ov);
         })}>Обзор</button>
-        <button disabled={!project} onClick={() => project && guard(async () => setRun(await api.run(project.id)))}>▶ Запуск</button>
+        <button disabled={!project || running} onClick={runProgram}>{running ? 'Запуск…' : '▶ Запуск'}</button>
         <button disabled={!project || verifying} onClick={runVerify}>{verifying ? 'Проверяем…' : 'Проверить'}</button>
         {project && <span className="muted">v{project.version}</span>}
         {error && <span className="error">{error}</span>}
@@ -292,7 +312,8 @@ export function App() {
       </section>
 
       <section className="output">
-        <BottomPanel run={run} verify={verify} onOpenReport={() => setShowVerify(true)} />
+        <BottomPanel run={run} verify={verify} onOpenReport={() => setShowVerify(true)}
+          stdin={stdin} onStdin={setStdin} onRun={runProgram} running={running} canRun={!!project} />
       </section>
     </div>
   );

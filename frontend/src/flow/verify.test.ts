@@ -48,3 +48,16 @@ test('verdict', () => {
   assert.equal(verdict({ compiled: false, behaviorPreserved: false, passed: 0, total: 3, cases: [] }), 'not-compiled');
   assert.equal(verdict({ behaviorPreserved: true, passed: 0, total: 0, cases: [] }), 'empty');
 });
+
+test('caseMismatch по ответу настоящего VerifyService: канал из префикса mismatch, compile без actual', () => {
+  const exp = run('1\n2');
+  assert.deepEqual(
+    caseMismatch({ name: 'corpus: 01.txt', ok: false, expected: exp, actual: run('1\n3'), mismatch: 'stdout: строка 2: «2» → «3»' }),
+    { channel: 'stdout', diff: { line: 2, expected: '2', actual: '3' } },
+  );
+  assert.equal(caseMismatch({ name: 'x', ok: false, expected: exp, actual: undefined, mismatch: 'compile: ошибка компиляции' })!.channel, 'compile');
+  assert.equal(caseMismatch({ name: 'x', ok: false, expected: exp, actual: run('1\n2', { exitCode: 3 }), mismatch: 'exitCode: ожидался 0, получен 3' })!.channel, 'exitCode');
+  // несколько причин — первая решает
+  assert.equal(caseMismatch({ name: 'x', ok: false, expected: exp, actual: run('9', { stderr: 'e' }), mismatch: 'stdout: …; stderr: …' })!.channel, 'stdout');
+  assert.equal(caseMismatch({ name: 'x', ok: false, expected: exp, actual: run('', { timedOut: true }), mismatch: 'timeout: текущая версия не уложилась в лимит времени' })!.channel, 'timeout');
+});

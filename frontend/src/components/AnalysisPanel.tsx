@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import type { Diagnostics, Finding } from '../api/types';
+import type { Diagnostics, Finding, VerifyReport } from '../api/types';
 
 /** Последнее применённое авто-исправление — показываем дифф и даём проверить или отменить. */
 export interface AppliedFix {
   title: string;
   description: string;
   diff: string;
+  /** Отчёт quality gate сервера: предыдущая версия vs исправленная (без него исправление не коммитится). */
+  gate?: VerifyReport | null;
 }
 
 interface Props {
@@ -94,6 +96,11 @@ export function AnalysisPanel({ diagnostics, onSelect, onFix, applied, onVerify,
           </div>
           <div>{applied.title}</div>
           <div className="muted">{applied.description}</div>
+          {applied.gate && (
+            <div className={applied.gate.behaviorPreserved ? 'ok' : 'fail'}>
+              Quality gate: {applied.gate.passed} из {applied.gate.total} тестов — поведение {applied.gate.behaviorPreserved ? 'не изменилось' : 'изменилось'}
+            </div>
+          )}
           <details>
             <summary>Изменения в коде</summary>
             <DiffView diff={applied.diff} />

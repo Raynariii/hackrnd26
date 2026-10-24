@@ -67,7 +67,8 @@ function CaseRow({ c }: { c: VerifyCase }) {
           <pre>{preview(c.input)}</pre>
         </div>
       )}
-      {(c.expected || c.actual) && (
+      {/* Без actual (текущая версия не компилируется) сравнивать нечего — причина уже в mismatch. */}
+      {c.expected && c.actual && (
         <div className="vs-compare">
           <Output title={`Ожидалось — версия 1 (${stream})`} text={c.expected?.[stream]} mark={mark} />
           <Output title={`Получено — текущая (${stream})`} text={c.actual?.[stream]} mark={mark} />

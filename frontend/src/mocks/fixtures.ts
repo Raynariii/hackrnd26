@@ -145,3 +145,18 @@ export const mockVerifyFail: VerifyReport = {
         : c,
   ),
 };
+
+/** ?verify=nocompile: текущая версия не компилируется — так отвечает VerifyService (кейсы без actual). */
+export const mockVerifyNoCompile: VerifyReport = {
+  baselineVersion: 1,
+  currentVersion: 2,
+  compiled: false,
+  behaviorPreserved: false,
+  passed: 0,
+  total: 2,
+  cases: [
+    { name: 'stdin: пусто', input: '', ok: false, expected: okRun('[2, 6]\n'), mismatch: 'compile: Main.java:10: error: cannot find symbol seen' },
+    { name: 'corpus: 01.txt', input: '1 2 2 3', ok: false, expected: okRun('[2, 4, 6]\n'), mismatch: 'compile: Main.java:10: error: cannot find symbol seen' },
+  ],
+  benchmark: [],
+};
