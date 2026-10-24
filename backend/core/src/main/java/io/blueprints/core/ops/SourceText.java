@@ -170,12 +170,15 @@ final class SourceText {
      */
     String apply() {
         List<Edit> sorted = new ArrayList<>(edits);
-        sorted.sort(Comparator.comparingInt(Edit::start).thenComparing(Comparator.comparingInt(Edit::end).reversed()));
+        // При одинаковом начале вставка идёт раньше замены: в тексте она окажется перед заменённым куском.
+        sorted.sort(Comparator.comparingInt(Edit::start)
+                .thenComparing(e -> e.start() != e.end())
+                .thenComparing(Comparator.comparingInt(Edit::end).reversed()));
         List<Edit> kept = new ArrayList<>();
         for (Edit e : sorted) {
             Edit last = kept.isEmpty() ? null : kept.get(kept.size() - 1);
             if (last != null && e.start() < last.end()) {
-                if (e.end() <= last.end() && last.end() > last.start()) {
+                if (e.end() <= last.end() && e.start() != e.end()) {
                     continue;
                 }
                 throw new UnsupportedGraphOpException("Правки пересекаются — выберите непересекающиеся узлы");
