@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Background, Controls, MiniMap, ReactFlow, useEdgesState, useNodesState, type Edge, type Node } from '@xyflow/react';
+import { Background, Controls, MiniMap, ReactFlow, useEdgesState, useNodesState, useReactFlow, type Edge, type Node } from '@xyflow/react';
 import type { Graph, GraphNode } from '../api/types';
 import { BlockNode, FrameNode, kindColor } from './BlockNode';
 import { layoutGraph } from './layout';
@@ -11,11 +11,38 @@ interface Props {
   selectedId: string | null;
   onSelect: (node: GraphNode) => void;
   onOpenMethod: (node: GraphNode) => void;
+  /** Показать узел на холсте (выбор пришёл из кода или из списка проблем). seq — чтобы повторный запрос тоже срабатывал. */
+  focus?: { id: string; seq: number } | null;
+}
+
+/** Плавно центрирует холст на узле, сохраняя масштаб. Рендерится внутри ReactFlow ради useReactFlow. */
+function FocusNode({ focus }: { focus: Props['focus'] }) {
+  const flow = useReactFlow();
+  useEffect(() => {
+    if (!focus) return;
+    let frame = 0;
+    let tries = 0;
+    const center = () => {
+      const node = flow.getInternalNode(focus.id);
+      const w = node?.measured.width;
+      const h = node?.measured.height;
+      if (!node || !w || !h) {
+        // Сразу после новой раскладки узлы ещё не измерены — ждём пару кадров.
+        if (tries++ < 30) frame = requestAnimationFrame(center);
+        return;
+      }
+      const { x, y } = node.internals.positionAbsolute;
+      flow.setCenter(x + w / 2, y + h / 2, { zoom: flow.getZoom(), duration: 300 });
+    };
+    center();
+    return () => cancelAnimationFrame(frame);
+  }, [focus, flow]);
+  return null;
 }
 
 const nodeOf = (n: Node) => (n.data as { node: GraphNode }).node;
 
-export function GraphCanvas({ graph, selectedId, onSelect, onOpenMethod }: Props) {
+export function GraphCanvas({ graph, selectedId, onSelect, onOpenMethod, focus }: Props) {
   // Узлы живут в состоянии и принимают изменения от React Flow (размеры, выделение). Если отдавать новые
   // объекты на каждый рендер без onNodesChange, React Flow теряет замеры и на кадр прячет узлы —
   // второй клик двойного клика уходит в пустой холст, и метод не открывается.
@@ -76,6 +103,7 @@ export function GraphCanvas({ graph, selectedId, onSelect, onOpenMethod }: Props
       <Background />
       <Controls />
       <MiniMap pannable zoomable nodeColor={(n) => kindColor(nodeOf(n).kind)} />
+      <FocusNode focus={focus} />
     </ReactFlow>
   );
 }

@@ -110,3 +110,4 @@ th, td { text-align: left; padding: 3px 4px; border-bottom: 1px solid var(--bord
 .tests { padding: 8px; }
 .tests ul { padding-left: 16px; }
 .code-highlight { background: rgba(59, 130, 246, .25); }
+.code-highlight-gutter { border-left: 3px solid var(--accent); margin-left: 3px; }

@@ -5,6 +5,7 @@ import { AnalysisPanel } from './components/AnalysisPanel';
 import { BottomPanel } from './components/BottomPanel';
 import { CodeEditor } from './components/CodeEditor';
 import { GraphCanvas } from './components/GraphCanvas';
+import { nodeAtLine, nodeForFinding } from './flow/sourceMap';
 
 export function App() {
   const [project, setProject] = useState<ProjectState | null>(null);
@@ -14,6 +15,8 @@ export function App() {
   const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [highlight, setHighlight] = useState<SourceRange | null>(null);
+  /** Запрос «покажи узел на холсте» — когда выбор пришёл не с самого холста. */
+  const [focus, setFocus] = useState<{ id: string; seq: number } | null>(null);
   const [run, setRun] = useState<RunResult | null>(null);
   const [verify, setVerify] = useState<VerifyReport | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -27,14 +30,21 @@ export function App() {
     }
   }, []);
 
+  /** Новый граф: id узлов пересчитаны (graph.schema.json), старое выделение и фокус не имеют смысла. */
+  const showGraph = useCallback((g: Graph) => {
+    setGraph(g);
+    setSelected(null);
+    setFocus(null);
+  }, []);
+
   const loadProject = useCallback(async (state: ProjectState) => {
     setProject(state);
     const file = state.files[0]?.path ?? null;
     setActiveFile(file);
     setDraft(state.files[0]?.content ?? '');
-    setGraph(await api.getGraph(state.id));
+    showGraph(await api.getGraph(state.id));
     setDiagnostics(await api.getDiagnostics(state.id));
-  }, []);
+  }, [showGraph]);
 
   useEffect(() => {
     if (import.meta.env.VITE_USE_MOCKS === 'true') {
@@ -61,8 +71,31 @@ export function App() {
     setHighlight(node.range ?? null);
   };
 
-  const selectFinding = (finding: Finding) =>
+  const focusNode = (node: GraphNode) => setFocus((f) => ({ id: node.id, seq: (f?.seq ?? 0) + 1 }));
+
+  const selectFinding = (finding: Finding) => {
+    if (finding.file !== activeFile) {
+      const file = project?.files.find((f) => f.path === finding.file);
+      if (file) {
+        setActiveFile(file.path);
+        setDraft(file.content);
+      }
+    }
     setHighlight({ file: finding.file, startLine: finding.startLine, endLine: finding.endLine });
+    const node = graph && nodeForFinding(graph, finding);
+    setSelected(node ?? null);
+    if (node) focusNode(node);
+  };
+
+  /** Строка → узел. Пока правка не применена, номера строк в редакторе и в графе расходятся — не сопоставляем. */
+  const savedContent = project?.files.find((f) => f.path === activeFile)?.content;
+  const selectLine = (line: number) => {
+    if (!graph || !activeFile || draft !== savedContent) return;
+    const node = nodeAtLine(graph, activeFile, line);
+    setSelected(node);
+    setHighlight(node?.range ?? null);
+    if (node) focusNode(node);
+  };
 
   return (
     <div className="app">
@@ -73,7 +106,7 @@ export function App() {
           <input type="file" accept=".java" multiple hidden onChange={(e) => importFiles(e.target.files)} />
         </label>
         <button disabled={!project} onClick={applySource}>Применить код</button>
-        <button disabled={!project} onClick={() => project && guard(async () => setGraph(await api.getGraph(project.id)))}>Обзор</button>
+        <button disabled={!project} onClick={() => project && guard(async () => showGraph(await api.getGraph(project.id)))}>Обзор</button>
         <button disabled={!project} onClick={() => project && guard(async () => setRun(await api.run(project.id)))}>▶ Запуск</button>
         <button disabled={!project} onClick={() => project && guard(async () => setVerify(await api.verify(project.id)))}>Проверить</button>
         {project && <span className="muted">v{project.version}</span>}
@@ -103,7 +136,8 @@ export function App() {
             graph={graph}
             selectedId={selected?.id ?? null}
             onSelect={selectNode}
-            onOpenMethod={(node) => project && guard(async () => setGraph(await api.getGraph(project.id, 'method', node.id)))}
+            onOpenMethod={(node) => project && guard(async () => showGraph(await api.getGraph(project.id, 'method', node.id)))}
+            focus={focus}
           />
         ) : (
           <div className="empty">Импортируйте .java-файл, чтобы построить граф</div>
@@ -115,7 +149,7 @@ export function App() {
       </aside>
 
       <section className="code">
-        <CodeEditor value={draft} highlight={highlight} onChange={setDraft} />
+        <CodeEditor value={draft} highlight={highlight} onChange={setDraft} onCursorLine={selectLine} />
       </section>
 
       <section className="output">
