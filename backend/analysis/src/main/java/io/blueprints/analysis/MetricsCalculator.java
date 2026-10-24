@@ -4,7 +4,9 @@ import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.ConditionalExpr;
+import com.github.javaparser.ast.expr.LambdaExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
+import com.github.javaparser.ast.expr.MethodReferenceExpr;
 import com.github.javaparser.ast.stmt.CatchClause;
 import com.github.javaparser.ast.stmt.DoStmt;
 import com.github.javaparser.ast.stmt.ForEachStmt;
@@ -16,12 +18,16 @@ import com.github.javaparser.ast.stmt.TryStmt;
 import com.github.javaparser.ast.stmt.WhileStmt;
 import io.blueprints.core.model.ProjectModel;
 
+import java.util.Collection;
+
 /**
  * Метрики метода по PLAN.md §4: цикломатическая сложность, максимальная вложенность блоков
  * и оценка Big O из AST.
  *
  * <p>Big O выводится из двух вещей: глубины вложенности циклов (каждый цикл — множитель n)
- * и стоимости операций внутри них по таблице {@link CostModel}. Оценка детерминированная
+ * и стоимости операций внутри них по таблице {@link CostModel}. Терминальная операция Stream API
+ * считается одним проходом O(n), а лямбда в {@code filter}/{@code map}/{@code anyMatch} выполняется
+ * на каждом элементе — линейный поиск в лямбде даёт O(n²). Оценка детерминированная
  * и объяснимая — её можно показать жюри рядом с находкой.
  *
  * <p>Ограничение: рекурсия и {@code while} с неизвестным числом итераций считаются как O(n)
@@ -99,6 +105,42 @@ public final class MetricsCalculator {
         return method.getBody().map(body -> estimate(body, 0)).orElse(BigO.constant());
     }
 
+    /**
+     * Оценка Big O фрагмента: выбранные блоки блок-схемы (id узлов графа) → их AST-поддеревья.
+     *
+     * <p>Циклы-предки учитываются: блок внутри двух циклов исполняется O(n²) раз, поэтому фрагмент
+     * показывает ту же сложность, что и метод, но только для выбранной части. Синтетический блок
+     * {@code <id метода>:start} даёт сложность метода целиком; неизвестные id игнорируются.
+     * Чистая функция: модель не меняется, применения к графу нет.
+     */
+    public BigO complexityOf(ProjectModel model, Collection<String> nodeIds) {
+        if (model == null || nodeIds == null) {
+            return BigO.constant();
+        }
+        BigO result = BigO.constant();
+        for (String nodeId : nodeIds) {
+            Node node = astNode(model, nodeId);
+            if (node == null) {
+                continue;
+            }
+            result = result.max(estimate(node, Ast.enclosingLoops(node).size()));
+        }
+        return result;
+    }
+
+    /** Узел по id графа: AST-узлы адресуются как {@code "g" + astId} (соглашение graph.schema.json). */
+    private static Node astNode(ProjectModel model, String nodeId) {
+        if (nodeId == null || nodeId.isBlank()) {
+            return null;
+        }
+        String id = nodeId;
+        if (id.endsWith(":start") || id.endsWith(":end")) {
+            id = id.substring(0, id.lastIndexOf(':'));
+        }
+        String astId = id.startsWith("g") ? id.substring(1) : id;
+        return model.nodeById(astId).orElse(null);
+    }
+
     private BigO estimate(Node node, int loopDepth) {
         BigO best = BigO.constant();
         if (Ast.isLoop(node)) {
@@ -108,9 +150,16 @@ public final class MetricsCalculator {
             best = callCost.times(BigO.of(loopDepth));
         }
         int childDepth = Ast.isLoop(node) ? loopDepth + 1 : loopDepth;
+        boolean perElement = node instanceof MethodCallExpr call && costModel.iteratesPerElement(call);
         for (Node child : node.getChildNodes()) {
-            best = best.max(estimate(child, childDepth));
+            int depth = perElement && isExecutedForEveryElement(child) ? childDepth + 1 : childDepth;
+            best = best.max(estimate(child, depth));
         }
         return best;
+    }
+
+    /** Лямбда/ссылка на метод, которую операция над потоком или коллекцией вызывает на каждом элементе. */
+    private static boolean isExecutedForEveryElement(Node node) {
+        return node instanceof LambdaExpr || node instanceof MethodReferenceExpr;
     }
 }

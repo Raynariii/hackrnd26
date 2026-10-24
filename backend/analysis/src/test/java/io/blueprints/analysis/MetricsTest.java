@@ -1,6 +1,7 @@
 package io.blueprints.analysis;
 
 import com.github.javaparser.ast.body.MethodDeclaration;
+import com.github.javaparser.ast.expr.MethodCallExpr;
 import io.blueprints.core.model.JavaProjectParser;
 import io.blueprints.core.model.ProjectModel;
 import io.blueprints.core.model.SourceFile;
@@ -152,5 +153,162 @@ class MetricsTest {
         MethodDeclaration method = method(source, "f");
 
         assertThat(new MetricsCalculator().complexity(method)).isEqualTo(BigO.constant());
+    }
+
+    @Test
+    void estimatesStreamPassAsLinear() {
+        String source = """
+                class A {
+                    long f(java.util.List<String> items) {
+                        return items.stream().filter(item -> item != null).count();
+                    }
+                }
+                """;
+
+        MethodDeclaration method = method(source, "f");
+
+        assertThat(new MetricsCalculator().complexity(method)).isEqualTo(BigO.of(1));
+    }
+
+    @Test
+    void estimatesTerminalOperationInsideLoopAsQuadratic() {
+        String source = """
+                class A {
+                    long f(java.util.List<String> items, java.util.List<String> names) {
+                        long total = 0;
+                        for (String item : items) {
+                            total += names.stream().filter(name -> name.equals(item)).count();
+                        }
+                        return total;
+                    }
+                }
+                """;
+
+        MethodDeclaration method = method(source, "f");
+
+        assertThat(new MetricsCalculator().complexity(method)).isEqualTo(BigO.of(2));
+    }
+
+    @Test
+    void estimatesLinearLookupInsideLambdaAsQuadratic() {
+        String source = """
+                class A {
+                    boolean f(java.util.List<String> items, java.util.List<String> allowed) {
+                        return items.stream().anyMatch(item -> allowed.contains(item));
+                    }
+                }
+                """;
+
+        MethodDeclaration method = method(source, "f");
+
+        assertThat(new MetricsCalculator().complexity(method)).isEqualTo(BigO.of(2));
+    }
+
+    @Test
+    void estimatesForEachWithLinearLookupAsQuadratic() {
+        String source = """
+                class A {
+                    void f(java.util.List<String> items, java.util.List<String> allowed) {
+                        items.forEach(item -> allowed.contains(item));
+                    }
+                }
+                """;
+
+        MethodDeclaration method = method(source, "f");
+
+        assertThat(new MetricsCalculator().complexity(method)).isEqualTo(BigO.of(2));
+    }
+
+    @Test
+    void keepsOptionalLambdaOutOfLinearMultiplier() {
+        String source = """
+                class A {
+                    boolean f(java.util.Optional<String> maybe, java.util.List<String> allowed) {
+                        return maybe.map(value -> allowed.contains(value)).orElse(false);
+                    }
+                }
+                """;
+
+        MethodDeclaration method = method(source, "f");
+
+        assertThat(new MetricsCalculator().complexity(method)).isEqualTo(BigO.of(1));
+    }
+
+    @Test
+    void estimatesSortedStreamAsLinearithmic() {
+        String source = """
+                class A {
+                    java.util.List<String> f(java.util.List<String> items) {
+                        return items.stream().sorted().toList();
+                    }
+                }
+                """;
+
+        MethodDeclaration method = method(source, "f");
+
+        assertThat(new MetricsCalculator().complexity(method)).isEqualTo(BigO.nLogN());
+    }
+
+    @Test
+    void estimatesSelectedFragmentIncludingEnclosingLoops() {
+        String source = """
+                class A {
+                    boolean f(java.util.List<String> items, java.util.List<String> allowed) {
+                        for (String item : items) {
+                            if (allowed.contains(item)) {
+                                return true;
+                            }
+                        }
+                        return false;
+                    }
+                }
+                """;
+        ProjectModel model = new JavaProjectParser().parse(List.of(new SourceFile("A.java", source)));
+        MethodCallExpr contains = model.units().values().iterator().next().findAll(MethodCallExpr.class).stream()
+                .filter(call -> call.getNameAsString().equals("contains"))
+                .findFirst()
+                .orElseThrow();
+
+        BigO complexity = new MetricsCalculator().complexityOf(model, List.of(Ast.nodeId(model, contains)));
+
+        assertThat(complexity).isEqualTo(BigO.of(2));
+    }
+
+    @Test
+    void estimatesWholeMethodByStartBlock() {
+        String source = """
+                class A {
+                    boolean f(java.util.List<String> items, java.util.List<String> allowed) {
+                        for (String item : items) {
+                            if (allowed.contains(item)) {
+                                return true;
+                            }
+                        }
+                        return false;
+                    }
+                }
+                """;
+        ProjectModel model = new JavaProjectParser().parse(List.of(new SourceFile("A.java", source)));
+        MethodDeclaration method = model.units().values().iterator().next()
+                .findFirst(MethodDeclaration.class).orElseThrow();
+
+        BigO complexity = new MetricsCalculator().complexityOf(model, List.of(Ast.nodeId(model, method) + ":start"));
+
+        assertThat(complexity).isEqualTo(BigO.of(2));
+    }
+
+    @Test
+    void ignoresUnknownFragmentIds() {
+        String source = """
+                class A {
+                    int f() {
+                        return 1;
+                    }
+                }
+                """;
+        ProjectModel model = new JavaProjectParser().parse(List.of(new SourceFile("A.java", source)));
+
+        assertThat(new MetricsCalculator().complexityOf(model, List.of("g404", "<нет>:start")))
+                .isEqualTo(BigO.constant());
     }
 }
