@@ -21,6 +21,7 @@ public final class Rules {
     public static List<Rule> defaultRules() {
         return List.of(
                 new NestedLoopSameCollectionRule(),
+                new NestedLoopLinearSearchRule(),
                 new CollectionLookupInLoopRule(),
                 new StringConcatInLoopRule(),
                 new LinkedListGetInLoopRule(),
