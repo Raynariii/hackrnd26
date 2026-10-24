@@ -151,7 +151,11 @@ paths:
     post:
       tags: [analysis]
       summary: Предложить (apply=false) или применить (apply=true) разбиение монолита
-      description: 'v1: только предложение; apply=true отвечает 501 not_implemented (LEAD.md G7).'
+      description: |
+        apply=false — только предложение. apply=true (G7 v1) — `Decomposer.apply`: static-методы и поля переносятся в новые
+        классы на копии, затем quality gate (компиляция + дифф-тесты против текущей версии) и новая версия; `result` —
+        ChangeResult. 422: `decompose_not_applicable` (нечего разбивать), `quality_gate_failed` (сессия не меняется);
+        409 — устаревшая версия.
       requestBody:
         required: true
         content:
@@ -163,11 +167,8 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DecomposeResult' }
-        '501':
-          description: apply=true пока не реализовано
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/Error' }
+        '409': { $ref: '#/components/responses/VersionConflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
 
   /projects/{projectId}/advice:
     parameters: [{ $ref: '#/components/parameters/ProjectId' }]
