@@ -169,6 +169,34 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
 
+  /projects/{projectId}/advice:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    post:
+      tags: [analysis]
+      summary: Совет LLM по находке (опционально)
+      description: |
+        Советчику (Claude, роль 2d) уходят находка и код её метода (не больше 200 строк). Ответ — только текст:
+        применить совет можно правкой кода, и она, как любая правка, проверяется /verify. Без `ANTHROPIC_API_KEY`
+        советчик выключен → 204.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdviceRequest' }
+      responses:
+        '200':
+          description: Совет
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Advice' }
+        '204': { description: Советчик выключен (нет ключа) }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '502':
+          description: Советчик не ответил (error = llm_unavailable)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
   /projects/{projectId}/run:
     parameters: [{ $ref: '#/components/parameters/ProjectId' }]
     post:
@@ -480,6 +508,20 @@ components:
           items: { type: string }
           description: 'Пояснения: какой класс разбит и на сколько частей, что не удалось распределить'
         result: { oneOf: [{ $ref: '#/components/schemas/ChangeResult' }, { type: 'null' }] }
+
+    AdviceRequest:
+      type: object
+      required: [findingId]
+      properties:
+        findingId: { type: string }
+
+    Advice:
+      type: object
+      required: [findingId, suggestion]
+      properties:
+        findingId: { type: string }
+        suggestion: { type: string, description: 'Объяснение и исправленный фрагмент (markdown)' }
+        model: { type: [string, 'null'] }
 
     RunProjectRequest:
       type: object

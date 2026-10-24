@@ -171,3 +171,10 @@ export interface DecomposeResult {
   notes?: string[];
   result?: ChangeResult | null;
 }
+
+/** POST /projects/{id}/advice — contracts/openapi.yaml → Advice (204 — советчик выключен) */
+export interface Advice {
+  findingId: string;
+  suggestion: string;
+  model?: string | null;
+}

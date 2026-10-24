@@ -15,6 +15,7 @@ services:
       RUNNER_URL: http://runner:8090
       VERIFY_CORPUS_DIR: /corpus
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
     volumes:
       # входы corpus/*/inputs — дифф-тесты и бенчмарк для verify, если загружен пример из корпуса
       - ./corpus:/corpus:ro
