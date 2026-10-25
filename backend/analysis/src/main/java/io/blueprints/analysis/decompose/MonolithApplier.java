@@ -2,6 +2,7 @@ package io.blueprints.analysis.decompose;
 
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.Modifier;
+import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.NodeList;
 import com.github.javaparser.ast.body.ClassOrInterfaceDeclaration;
 import com.github.javaparser.ast.body.FieldDeclaration;
@@ -12,6 +13,7 @@ import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.LambdaExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
+import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.printer.DefaultPrettyPrinter;
 import io.blueprints.analysis.FixNotApplicableException;
@@ -139,6 +141,11 @@ public final class MonolithApplier {
 
         List<GroupMove> groups = new ArrayList<>();
         Set<String> movedFieldNames = new LinkedHashSet<>();
+        // Имя нового класса не должно совпадать ни с одним типом проекта: группа «Main» в Main.java затёрла бы исходный
+        // файл вместе с вложенными типами (02-library, 03-bank).
+        Set<String> takenNames = new LinkedHashSet<>();
+        model.units().values().forEach(unit -> unit.findAll(TypeDeclaration.class)
+                .forEach(type -> takenNames.add(((TypeDeclaration<?>) type).getNameAsString())));
         for (MonolithSplitter.PlannedGroup group : plan.groups()) {
             List<MethodDeclaration> groupCandidates = group.methods().stream().filter(candidates::contains).toList();
             if (groupCandidates.size() < 2) {
@@ -169,7 +176,12 @@ public final class MonolithApplier {
                 continue;
             }
             List<FieldDeclaration> fieldDeclarations = fields.stream().map(singleFields::get).toList();
-            groups.add(new GroupMove(group.className(), List.copyOf(movable), fieldDeclarations));
+            String className = freeName(group.className(), takenNames);
+            takenNames.add(className);
+            if (!className.equals(group.className())) {
+                notes.add("Класс «" + group.className() + "» уже есть в проекте — группа перенесена в " + className);
+            }
+            groups.add(new GroupMove(className, List.copyOf(movable), fieldDeclarations));
             movedFieldNames.addAll(fields);
         }
         if (groups.isEmpty()) {
@@ -196,14 +208,19 @@ public final class MonolithApplier {
                 .filter(name -> !movedTo.containsKey(name))
                 .collect(Collectors.toCollection(LinkedHashSet::new));
 
-        Map<MethodDeclaration, String> callerTarget = new IdentityHashMap<>();
-        owner.getMethods().forEach(method ->
-                callerTarget.put(method, movedTo.getOrDefault(method.getNameAsString(), ownerName)));
-        for (MethodDeclaration method : owner.getMethods()) {
-            String from = callerTarget.get(method);
-            for (MethodCallExpr call : method.findAll(MethodCallExpr.class)) {
-                qualifyCall(call, from, ownerName, movedTo, staying);
+        // Где окажется код, содержащий вызов: метод/поле группы — в её классе, всё остальное — в монолите.
+        Map<Node, String> memberTarget = new IdentityHashMap<>();
+        for (GroupMove group : groups) {
+            group.methods().forEach(method -> memberTarget.put(method, group.className()));
+            group.fields().forEach(field -> memberTarget.put(field, group.className()));
+        }
+        // Вызовы во всём классе-владельце, а не только в его методах: конструкторы, инициализаторы, лямбды и
+        // методы вложенных типов тоже вызывают перенесённые методы без квалификации (03-bank: formatMoney(...)).
+        for (MethodCallExpr call : owner.findAll(MethodCallExpr.class)) {
+            if (shadowedByNestedType(call, owner)) {
+                continue;
             }
+            qualifyCall(call, containingClass(call, owner, memberTarget, ownerName), ownerName, movedTo, staying);
         }
         for (GroupMove group : groups) {
             for (MethodDeclaration method : group.methods()) {
@@ -211,7 +228,6 @@ public final class MonolithApplier {
             }
             for (FieldDeclaration field : group.fields()) {
                 qualifyTypeReferences(field, ownerName, nestedTypeNames, movedFieldNames);
-                qualifyCalls(field, group.className(), ownerName, movedTo, staying);
             }
         }
 
@@ -336,18 +352,56 @@ public final class MonolithApplier {
         }
     }
 
-    private static void qualifyCalls(com.github.javaparser.ast.Node node, String from, String ownerName,
-                                     Map<String, String> movedTo, Set<String> staying) {
-        for (MethodCallExpr call : node.findAll(MethodCallExpr.class)) {
-            qualifyCall(call, from, ownerName, movedTo, staying);
+    /** Класс, в котором окажется код с вызовом: ближайший член монолита решает, переносится он или остаётся. */
+    private static String containingClass(Node node, ClassOrInterfaceDeclaration owner,
+                                          Map<Node, String> memberTarget, String ownerName) {
+        for (Node current = node; current != null && current != owner; current = current.getParentNode().orElse(null)) {
+            if (current.getParentNode().orElse(null) == owner) {
+                return memberTarget.getOrDefault(current, ownerName);
+            }
         }
+        return ownerName;
+    }
+
+    /**
+     * Вызов внутри вложенного или анонимного класса, у которого есть свой метод с тем же именем: он вызывает
+     * свой метод, а не метод монолита, — квалифицировать нельзя.
+     */
+    private static boolean shadowedByNestedType(MethodCallExpr call, ClassOrInterfaceDeclaration owner) {
+        String name = call.getNameAsString();
+        for (Node current = call.getParentNode().orElse(null); current != null && current != owner;
+             current = current.getParentNode().orElse(null)) {
+            if (current instanceof TypeDeclaration<?> type && !type.getMethodsByName(name).isEmpty()) {
+                return true;
+            }
+            if (current instanceof ObjectCreationExpr creation && creation.getAnonymousClassBody()
+                    .map(body -> body.stream().anyMatch(member -> member instanceof MethodDeclaration method
+                            && method.getNameAsString().equals(name)))
+                    .orElse(false)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Свободное имя класса: {@code Main} занято → {@code MainPart}, затем {@code MainPart2}… */
+    private static String freeName(String name, Set<String> taken) {
+        if (!taken.contains(name)) {
+            return name;
+        }
+        String base = name + "Part";
+        String candidate = base;
+        for (int i = 2; taken.contains(candidate); i++) {
+            candidate = base + i;
+        }
+        return candidate;
     }
 
     /**
      * При переносе ссылки на оставшийся вложенный тип и на перенесённое статическое поле нужно
      * квалифицировать: {@code Order} → {@code Monolith.Order}, {@code Monolith.parsed} → {@code parsed}.
      */
-    private static void qualifyTypeReferences(com.github.javaparser.ast.Node node, String ownerName,
+    private static void qualifyTypeReferences(Node node, String ownerName,
                                               List<String> nestedTypeNames, Set<String> movedFields) {
         for (ClassOrInterfaceType type : node.findAll(ClassOrInterfaceType.class)) {
             if (type.getScope().isEmpty() && nestedTypeNames.contains(type.getNameAsString())) {
@@ -359,6 +413,29 @@ public final class MonolithApplier {
                 access.replace(new NameExpr(access.getNameAsString()));
             }
         }
+        // Вложенный тип в позиции выражения — Mark.of(p), Mark.FAIL: в новом классе нужен Main.Mark (05-course-grades).
+        Set<String> locals = localNames(node);
+        for (NameExpr name : node.findAll(NameExpr.class)) {
+            String simple = name.getNameAsString();
+            if (nestedTypeNames.contains(simple) && !locals.contains(simple)) {
+                name.replace(new FieldAccessExpr(new NameExpr(ownerName), simple));
+            }
+        }
+    }
+
+    /** Имена параметров, локальных переменных и параметров лямбд внутри узла — они перекрывают имена типов. */
+    private static Set<String> localNames(Node node) {
+        Set<String> locals = new HashSet<>();
+        if (node instanceof MethodDeclaration method) {
+            method.getParameters().forEach(parameter -> locals.add(parameter.getNameAsString()));
+        }
+        node.findAll(VariableDeclarator.class).forEach(declarator -> locals.add(declarator.getNameAsString()));
+        node.findAll(LambdaExpr.class).forEach(lambda ->
+                lambda.getParameters().forEach(parameter -> locals.add(parameter.getNameAsString())));
+        if (node instanceof FieldDeclaration field) {
+            field.getVariables().forEach(variable -> locals.remove(variable.getNameAsString()));
+        }
+        return locals;
     }
 
     /** Обращается ли метод к полям класса; переменные и параметры с тем же именем не считаются полем. */
