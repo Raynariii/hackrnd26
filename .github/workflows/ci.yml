@@ -55,6 +55,19 @@ jobs:
         run: docker compose up -d
       - name: Smoke test (web → api → runner)
         run: python3 .github/scripts/compose-smoke.py
+      - name: Jury path via UI (browser → web → api → runner)
+        working-directory: frontend
+        run: |
+          npm i --no-save playwright@1.48.2
+          npx playwright install --with-deps chromium
+          JURY_URL=http://localhost:3000 node e2e/jury.mjs e2e-out
+      - name: Jury screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jury-e2e
+          path: frontend/e2e-out
+          if-no-files-found: ignore
       - name: Logs on failure
         if: failure()
         run: docker compose logs --no-color --tail=200
