@@ -6,16 +6,21 @@ import com.github.javaparser.ast.body.Parameter;
 import com.github.javaparser.ast.body.TypeDeclaration;
 import com.github.javaparser.ast.body.VariableDeclarator;
 import com.github.javaparser.ast.expr.AssignExpr;
+import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.LambdaExpr;
 import com.github.javaparser.ast.expr.NameExpr;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
+import com.github.javaparser.ast.expr.ThisExpr;
 import com.github.javaparser.ast.expr.UnaryExpr;
 import com.github.javaparser.ast.expr.VariableDeclarationExpr;
 import com.github.javaparser.ast.stmt.BreakStmt;
 import com.github.javaparser.ast.stmt.ContinueStmt;
+import com.github.javaparser.ast.stmt.ExplicitConstructorInvocationStmt;
 import com.github.javaparser.ast.stmt.LocalClassDeclarationStmt;
+import com.github.javaparser.ast.stmt.LocalRecordDeclarationStmt;
 import com.github.javaparser.ast.stmt.ReturnStmt;
 import com.github.javaparser.ast.stmt.YieldStmt;
+import com.github.javaparser.ast.type.ClassOrInterfaceType;
 import com.github.javaparser.ast.type.Type;
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.Node;
@@ -23,7 +28,9 @@ import com.github.javaparser.ast.NodeList;
 import com.github.javaparser.ast.body.BodyDeclaration;
 import com.github.javaparser.ast.body.CallableDeclaration;
 import com.github.javaparser.ast.body.CompactConstructorDeclaration;
+import com.github.javaparser.ast.body.ConstructorDeclaration;
 import com.github.javaparser.ast.body.InitializerDeclaration;
+import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.comments.Comment;
 import com.github.javaparser.ast.stmt.BlockStmt;
 import com.github.javaparser.ast.stmt.CatchClause;
@@ -573,8 +580,10 @@ public final class DefaultGraphOperations implements GraphOperations {
     /** Обернуть подряд идущие операторы ({@code nodeIds} или {@code nodeId}) в if или цикл; {@code code} — заголовок. */
     private void wrap(ProjectModel model, GraphOp op, boolean isIf) {
         List<Node> sel = selection(model, ids(op), false);
+        requireNoConstructorCall(sel);
         String header = isIf ? ifHeader(requireCode(op)) : loopHeader(requireCode(op));
         requireNoEscapingDeclarations(sel);
+        requireNotFinalExit(sel);
         Change change = change(model, sel.get(0));
         SourceText st = change.text();
         Node first = sel.get(0);
@@ -586,23 +595,51 @@ public final class DefaultGraphOperations implements GraphOperations {
         commit(model, change);
     }
 
-    /** Переменная, объявленная в выделении и нужная после него, после обёртки окажется вне области видимости. */
+    /**
+     * Переменная или локальный тип (record / class), объявленные в выделении и нужные после него, после обёртки
+     * окажутся вне области видимости. Проверяем внутри блока, где стоит выделение — так работает и в
+     * {@code static {}}, и в лямбде.
+     */
     private static void requireNoEscapingDeclarations(List<Node> sel) {
-        CallableDeclaration<?> callable = sel.get(0).findAncestor(CallableDeclaration.class).orElse(null);
-        if (callable == null) {
+        Node scope = sel.get(0).getParentNode().orElse(null);
+        if (scope instanceof SwitchEntry entry) {
+            scope = entry.getParentNode().orElse(entry);
+        }
+        if (scope == null) {
             return;
         }
-        Set<String> after = namesAfter(callable, sel.get(sel.size() - 1));
+        Set<String> after = namesAfter(scope, sel.get(sel.size() - 1));
+        Set<String> typesAfter = typeNamesAfter(scope, sel.get(sel.size() - 1));
         List<String> escaping = new ArrayList<>();
         for (Node n : sel) {
             if (n instanceof ExpressionStmt es && es.getExpression() instanceof VariableDeclarationExpr v) {
                 v.getVariables().stream().map(VariableDeclarator::getNameAsString).filter(after::contains)
                         .forEach(escaping::add);
             }
+            String type = n instanceof LocalRecordDeclarationStmt r ? r.getRecordDeclaration().getNameAsString()
+                    : n instanceof LocalClassDeclarationStmt c ? c.getClassDeclaration().getNameAsString() : null;
+            if (type != null && typesAfter.contains(type)) {
+                escaping.add(type);
+            }
         }
         if (!escaping.isEmpty()) {
             throw new UnsupportedGraphOpException("Переменная " + String.join(", ", escaping)
                     + " нужна после блока — после обёртки она станет недоступна. Выделите и её использования");
+        }
+    }
+
+    /**
+     * Последний оператор тела метода, возвращающего значение, не может завершиться нормально (return, throw,
+     * switch или if-else, где все ветки возвращают). Обёрнутый в if или цикл, он завершиться нормально может —
+     * javac потребует ещё один return («missing return statement»).
+     */
+    private static void requireNotFinalExit(List<Node> sel) {
+        Node last = sel.get(sel.size() - 1);
+        Node block = last.getParentNode().orElse(null);
+        if (block instanceof BlockStmt b && b.getStatements().getLast().orElse(null) == last
+                && b.getParentNode().orElse(null) instanceof MethodDeclaration m && !m.getType().isVoidType()) {
+            throw new UnsupportedGraphOpException("Это последний оператор метода, возвращающего значение: после "
+                    + "обёртки метод может завершиться без return. Добавьте return после блока или оберните операторы до него");
         }
     }
 
@@ -636,6 +673,7 @@ public final class DefaultGraphOperations implements GraphOperations {
             throw new UnsupportedGraphOpException("Не указано, куда перемещать (targetId)");
         }
         List<Node> sel = selection(model, ids(op), true);
+        requireNoConstructorCall(sel);
         Target target = resolve(model, op.targetId());
         if (target.anchor() == Anchor.END) {
             throw new UnsupportedGraphOpException("После конца метода вставлять нельзя");
@@ -691,6 +729,7 @@ public final class DefaultGraphOperations implements GraphOperations {
         if (!type.getMethodsByName(name).isEmpty()) {
             throw new UnsupportedGraphOpException("Метод " + name + " уже есть в " + type.getNameAsString());
         }
+        requireNoConstructorCall(sel);
         requireLocalControlFlow(sel);
 
         Map<String, String> outer = visibleLocals(callable, first);
@@ -720,6 +759,20 @@ public final class DefaultGraphOperations implements GraphOperations {
         for (Node n : sel) {
             if (n instanceof ExpressionStmt es && es.getExpression() instanceof VariableDeclarationExpr v) {
                 v.getVariables().forEach(d -> declared.put(d.getNameAsString(), typeOf(d)));
+            }
+        }
+        if (callable instanceof ConstructorDeclaration) {
+            requireNoFinalFieldWrites(sel, type, outer.keySet(), declared.keySet());
+        }
+        Set<String> typesAfter = typeNamesAfter(callable, last);
+        for (Node n : sel) {
+            if (n instanceof LocalRecordDeclarationStmt || n instanceof LocalClassDeclarationStmt) {
+                String local = n instanceof LocalRecordDeclarationStmt r ? r.getRecordDeclaration().getNameAsString()
+                        : ((LocalClassDeclarationStmt) n).getClassDeclaration().getNameAsString();
+                if (typesAfter.contains(local)) {
+                    throw new UnsupportedGraphOpException("Локальный тип " + local
+                            + " нужен после фрагмента — вынесите его вместе с использованиями или сделайте членом класса");
+                }
             }
         }
         Set<String> after = namesAfter(callable, last);
@@ -790,6 +843,37 @@ public final class DefaultGraphOperations implements GraphOperations {
         throw new UnsupportedGraphOpException("Фрагмент вне метода");
     }
 
+    /** {@code super(...)} / {@code this(...)} обязан оставаться первым оператором конструктора. */
+    private static void requireNoConstructorCall(List<Node> sel) {
+        if (sel.stream().anyMatch(n -> n instanceof ExplicitConstructorInvocationStmt)) {
+            throw new UnsupportedGraphOpException(
+                    "Вызов super(...) / this(...) должен оставаться первым оператором конструктора — его не переносят");
+        }
+    }
+
+    /** final-поле присваивается только в конструкторе: в вынесенном методе это не скомпилируется. */
+    private static void requireNoFinalFieldWrites(List<Node> sel, TypeDeclaration<?> type, Set<String> locals,
+                                                  Set<String> declared) {
+        Set<String> finals = new HashSet<>();
+        for (FieldDeclaration f : type.getFields()) {
+            if (f.isFinal() && !f.isStatic()) {
+                f.getVariables().forEach(v -> finals.add(v.getNameAsString()));
+            }
+        }
+        for (Node n : sel) {
+            for (AssignExpr a : n.findAll(AssignExpr.class)) {
+                String field = a.getTarget() instanceof FieldAccessExpr fa && fa.getScope() instanceof ThisExpr
+                        ? fa.getNameAsString()
+                        : a.getTarget() instanceof NameExpr ne && !locals.contains(ne.getNameAsString())
+                                && !declared.contains(ne.getNameAsString()) ? ne.getNameAsString() : null;
+                if (field != null && finals.contains(field)) {
+                    throw new UnsupportedGraphOpException("Фрагмент присваивает final-поле " + field
+                            + " — это можно делать только в конструкторе. Выделите операторы без этого присваивания");
+                }
+            }
+        }
+    }
+
     /** return и прыжки за пределы фрагмента изменили бы поведение после выноса — отказываемся. */
     private static void requireLocalControlFlow(List<Node> sel) {
         for (Node n : sel) {
@@ -810,6 +894,9 @@ public final class DefaultGraphOperations implements GraphOperations {
 
     /** Оператор внутри лямбды или локального/анонимного класса — его return к фрагменту не относится. */
     private static boolean insideNestedBody(Node s, Node root) {
+        if (s == root) {
+            return false; // иначе подъём уходит выше выделения — например, в анонимный класс вокруг метода
+        }
         Node n = s.getParentNode().orElse(null);
         while (n != null && n != root) {
             if (n instanceof LambdaExpr || n instanceof ObjectCreationExpr || n instanceof LocalClassDeclarationStmt) {
@@ -886,12 +973,24 @@ public final class DefaultGraphOperations implements GraphOperations {
     }
 
     /** Имена, которые метод читает или пишет после фрагмента. */
-    private static Set<String> namesAfter(CallableDeclaration<?> callable, Node last) {
+    private static Set<String> namesAfter(Node scope, Node last) {
         Position end = last.getEnd().orElseThrow();
         Set<String> names = new HashSet<>();
-        for (NameExpr ne : callable.findAll(NameExpr.class)) {
+        for (NameExpr ne : scope.findAll(NameExpr.class)) {
             if (ne.getBegin().orElseThrow().isAfter(end)) {
                 names.add(ne.getNameAsString());
+            }
+        }
+        return names;
+    }
+
+    /** Имена типов после {@code last}: {@code List<Failure>}, {@code new Failure(...)}, {@code Failure::id}. */
+    private static Set<String> typeNamesAfter(Node scope, Node last) {
+        Position end = last.getEnd().orElseThrow();
+        Set<String> names = new HashSet<>(namesAfter(scope, last));
+        for (ClassOrInterfaceType t : scope.findAll(ClassOrInterfaceType.class)) {
+            if (t.getBegin().orElseThrow().isAfter(end)) {
+                names.add(t.getNameAsString());
             }
         }
         return names;

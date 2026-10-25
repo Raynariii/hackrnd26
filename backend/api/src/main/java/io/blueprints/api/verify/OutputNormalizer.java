@@ -12,6 +12,11 @@ public final class OutputNormalizer {
 
     /** {@code Object.toString()} по умолчанию: {@code Order@1b6d3586} → {@code Order@HASH}. */
     private static final Pattern IDENTITY_HASH = Pattern.compile("([\\w$\\]\\[;])@[0-9a-f]{4,8}\\b");
+    /**
+     * Скрытый класс лямбды: {@code Main$$Lambda/0x00007f82d0003128} (JDK 21) или {@code Main$$Lambda$14/0x0000000800c03000}
+     * — адрес и номер меняются от запуска к запуску и от правки к правке.
+     */
+    private static final Pattern LAMBDA_CLASS = Pattern.compile("\\$\\$Lambda(?:\\$\\d+)?(?:/0x[0-9a-f]+)?");
     private static final Pattern JVM_NOISE = Pattern.compile(
             "(?m)^(?:Picked up (?:JAVA_TOOL_OPTIONS|_JAVA_OPTIONS|JDK_JAVA_OPTIONS):.*|NOTE: Picked up .*)\\n?");
     private static final Pattern SANDBOX_PATH = Pattern.compile("(?:/[\\w.\\-]+)*/run-\\d+(?:/(?:src|out))?/?|<sandbox>/?");
@@ -29,6 +34,7 @@ public final class OutputNormalizer {
         String s = text.replace("\r\n", "\n").replace('\r', '\n');
         s = JVM_NOISE.matcher(s).replaceAll("");
         s = SANDBOX_PATH.matcher(s).replaceAll("");
+        s = LAMBDA_CLASS.matcher(s).replaceAll("\\$\\$Lambda");
         s = IDENTITY_HASH.matcher(s).replaceAll("$1@HASH");
         return s;
     }

@@ -6,7 +6,7 @@
 
 ```
 corpus/<NN-название>/
-  Main.java          # один файл, один класс с main
+  Main.java          # один файл, один класс с main (у примеров кейсодателя — исходное имя класса)
   inputs/*.txt       # stdin-входы: дифф-тесты /verify берут их автоматически, если загружен этот пример
   inputs/bench-<n>.txt   # входы растущего размера для бенчмарка /verify (benchmark=true)
   NOTES.md           # какие конструкции scope покрыты и какие дефекты заложены
@@ -21,6 +21,10 @@ corpus/<NN-название>/
 | `04-text-stats` | ~500 | 1, 2: `String`, `Character`, кириллица, метки циклов | O(n²) анаграммы, конкатенация, вложенность |
 | `05-course-grades` | ~440 | бонус: record, enum, sealed, дженерики, лямбды, Stream, Collectors | `contains` в цикле, O(n²), пересчёт в компараторе |
 | `06-demo-warehouse` | ~200 | **демо**: три исправимых O(n²) → O(n), ускорение ×6,5 на n = 20000 | `contains`, конкатенация, `LinkedList.get` |
+| `07-logistics` | ~1100 | **стресс**: sealed + switch с образцами, enum с телами, внутренний класс, локальный record, анонимный `Iterator`, метки, провал в switch, try-with-resources, Дейкстра/Флойд | `contains`, конкатенация, `LinkedList.get` (с 0 и не с 0), O(n²), `Pattern.compile` в цикле, рекурсия без мемо, дублирование, длинный метод |
+| `08-axenix-library` | 782 | **кейсодатель**: `LibraryManagerMess` как есть; иерархия исключений, `Iterator`, `ConcurrentModificationException`, `Optional`, `Scanner` | конкатенация, дублирование, O(n²) |
+| `09-axenix-text` | 922 | **кейсодатель**: `TextAnalyzerMess`; сама падает с исключением (код 1) — verify сравнивает stderr и код выхода | конкатенация с начальным значением, O(n²), пустой `catch` |
+| `10-axenix-numbers` | 971 | **кейсодатель**: `NumberCruncherMess`; свой LCG, матрицы, рекурсия | O(n²)/O(n³), экспоненциальная рекурсия, `LinkedList.get`, дублирование |
 
 Матрица «конструкция scope → пример → граф/генерация/тест» — в [`docs/scope.md`](../docs/scope.md).
 

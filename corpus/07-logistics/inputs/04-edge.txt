@@ -1,0 +1,26 @@
+# псевдонимы команд, пробелы, регистр, недостижимые пункты, платные дороги для велосипеда
+?
+node a Остров-Северный
+node b Большая земля
+node c Маяк
+node d Хутор Дальний
+road a b 3 toll
+road b c 4
+ROAD   c    a   20
+courier v1 bike b 12
+courier v2 car c 120
+add q1 a c 3 economy
+add q2 b a 11.5 express sale
+add q3 c d 1 standard
+add q4 a c 3 economy
+add q5 a c 3.001 economy
+promo SALE percent 15
+assign
+path a c
+path c d
+deliver q1
+deliver q2
+fail q4 непогода
+top 5
+audit 100
+stats

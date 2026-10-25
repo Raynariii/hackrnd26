@@ -151,6 +151,28 @@ def warehouse(size):
     return lines
 
 
+def logistics(n):
+    """Карта из 24 пунктов, 6 курьеров, n заказов: нагружает contains в ASSIGN, CSV-конкатенацию, поиск дублей O(n²)."""
+    rnd = random.Random(n)
+    nodes = [f"N{i}" for i in range(24)]
+    lines = [f"NODE {v} Пункт {i}" for i, v in enumerate(nodes)]
+    for i in range(1, len(nodes)):
+        lines.append(f"ROAD {nodes[i - 1]} {nodes[i]} {rnd.randint(2, 15)}")
+    for _ in range(18):
+        a, b = rnd.sample(nodes, 2)
+        lines.append(f"ROAD {a} {b} {rnd.randint(5, 40)}{' TOLL' if rnd.random() < 0.3 else ''}")
+    for k, vehicle in enumerate(["BIKE", "CAR", "CAR", "TRUCK", "CAR", "BIKE"]):
+        lines.append(f"COURIER k{k} {vehicle} {rnd.choice(nodes)} {1500 if vehicle == 'TRUCK' else 1000}")
+    lines.append("PROMO BENCH PERCENT 7")
+    tariffs = ["ECONOMY", "STANDARD", "EXPRESS"]
+    for i in range(n):
+        a, b = rnd.sample(nodes, 2)
+        promo = " BENCH" if i % 11 == 0 else ""
+        lines.append(f"ORDER o{i} {a} {b} {rnd.randint(1, 8) / 4} {rnd.choice(tariffs)}{promo}")
+    lines += ["ASSIGN", "STATS", "TOP 3", "CSV", "REPORT"]
+    return lines
+
+
 GENERATORS = {
     "01-shop-orders": shop_orders,
     "02-library": library,
@@ -158,11 +180,13 @@ GENERATORS = {
     "04-text-stats": text,
     "05-course-grades": course,
     "06-demo-warehouse": warehouse,
+    "07-logistics": logistics,
 }
 
 # Свои размеры: у демо-примера горячие участки квадратичные, разница «до/после» видна на больших n.
 SIZES_BY_EXAMPLE = {
     "06-demo-warehouse": [5000, 10000, 20000],
+    "07-logistics": [1000, 2000, 4000],
 }
 
 if __name__ == "__main__":

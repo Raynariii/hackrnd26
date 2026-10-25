@@ -818,6 +818,103 @@ class GraphOperationsTest {
     }
 
     @Test
+    void wrapKeepsDeclarationsVisibleInInitializersAndLocalTypes() {
+        Fixture f = new Fixture("""
+                static final Map<String, String> M;
+                static {
+                    Map<String, String> m = new HashMap<>();
+                    m.put("a", "b");
+                    M = m;
+                }
+                static String f(List<String> xs) {
+                    record Pair(String a, int n) {
+                    }
+                    List<Pair> out = new ArrayList<>();
+                    for (String x : xs) {
+                        out.add(new Pair(x, x.length()));
+                    }
+                    return out.toString();
+                }""");
+        String init = builder.overview(f.model).nodes().stream().filter(n -> n.label().equals("static {}"))
+                .findFirst().orElseThrow().id();
+        String decl = builder.methodFlow(f.model, init).nodes().stream()
+                .filter(n -> n.code() != null && n.code().contains("new HashMap")).findFirst().orElseThrow().id();
+        assertThatThrownBy(() -> ops.apply(f.model, op("wrapIf", List.of(decl), "true")))
+                .isInstanceOf(UnsupportedGraphOpException.class).hasMessageContaining("Переменная m нужна после блока");
+        java.util.function.Function<String, String> id = part -> builder.methodFlow(f.model, methodId(f, "f")).nodes()
+                .stream().filter(n -> n.code() != null && n.code().contains(part)).findFirst().orElseThrow().id();
+        assertThatThrownBy(() -> ops.apply(f.model, op("wrapIf", List.of(id.apply("record Pair")), "true")))
+                .isInstanceOf(UnsupportedGraphOpException.class).hasMessageContaining("Pair нужна после блока");
+        assertThatThrownBy(() -> ops.apply(f.model, extract(List.of(id.apply("record Pair")), "pair")))
+                .isInstanceOf(UnsupportedGraphOpException.class).hasMessageContaining("Локальный тип Pair");
+        assertThatThrownBy(() -> ops.apply(f.model, op("wrapIf", List.of(id.apply("return out")), "true")))
+                .isInstanceOf(UnsupportedGraphOpException.class).hasMessageContaining("последний оператор");
+
+        String src = apply(f, op("wrapIf", List.of(id.apply("for (String x")), "xs != null"));
+        assertThat(src).contains("    if (xs != null) {\n        for (String x : xs) {\n            out.add(new Pair(");
+    }
+
+    @Test
+    void finalSwitchAndReturnInsideAnonymousClassAreGuarded() {
+        Fixture f = new Fixture("""
+                static String kind(int n) {
+                    switch (n % 2) {
+                        case 0:
+                            return "чёт";
+                        default:
+                            return "нечёт";
+                    }
+                }
+                static Iterator<Integer> it(int size) {
+                    return new Iterator<>() {
+                        int i;
+                        public boolean hasNext() {
+                            return i < size;
+                        }
+                        public Integer next() {
+                            return i++;
+                        }
+                    };
+                }""");
+        String sw = block(f, "kind", NodeKind.SWITCH, "n % 2").id();
+        assertThatThrownBy(() -> ops.apply(f.model, op("wrapIf", List.of(sw), "n >= 0")))
+                .isInstanceOf(UnsupportedGraphOpException.class).hasMessageContaining("последний оператор");
+        String ret = builder.methodFlow(f.model, methodId(f, "hasNext")).nodes().stream()
+                .filter(n -> n.kind() == NodeKind.RETURN).findFirst().orElseThrow().id();
+        assertThatThrownBy(() -> ops.apply(f.model, extract(List.of(ret), "check")))
+                .isInstanceOf(UnsupportedGraphOpException.class).hasMessageContaining("return");
+    }
+
+    @Test
+    void constructorCallAndFinalFieldsStayInConstructor() {
+        Fixture f = new Fixture("""
+                static class Base {
+                    Base(int x) {
+                    }
+                }
+                static class Box extends Base {
+                    final int limit;
+                    int used;
+                    Box(int x) {
+                        super(x);
+                        this.limit = x * 2;
+                        used = x;
+                    }
+                }""");
+        java.util.function.Function<String, String> id = part -> builder.methodFlow(f.model, methodId(f, "Box")).nodes()
+                .stream().filter(n -> n.code() != null && n.code().contains(part)).findFirst().orElseThrow().id();
+        assertThatThrownBy(() -> ops.apply(f.model, op("wrapIf", List.of(id.apply("super(x)")), "x > 0")))
+                .isInstanceOf(UnsupportedGraphOpException.class).hasMessageContaining("super(...)");
+        assertThatThrownBy(() -> ops.apply(f.model, extract(List.of(id.apply("super(x)")), "init")))
+                .isInstanceOf(UnsupportedGraphOpException.class).hasMessageContaining("super(...)");
+        assertThatThrownBy(() -> ops.apply(f.model, extract(List.of(id.apply("limit = x")), "init")))
+                .isInstanceOf(UnsupportedGraphOpException.class).hasMessageContaining("final-поле limit");
+
+        String src = apply(f, extract(List.of(id.apply("used = x")), "initUsed"));
+        assertThat(src).contains("        initUsed(x);").contains("private void initUsed(int x) {");
+    }
+
+    @Test
     void extractRejectsReturnJumpsAndSeveralOutputs() {
         Fixture f = new Fixture("""
                 static int f(int x) {
