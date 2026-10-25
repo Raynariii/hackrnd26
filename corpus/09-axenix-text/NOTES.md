@@ -14,3 +14,5 @@ stderr (без кадров стека) и код выхода, а не толь
 13 исправлений (gate 11/11). **12 исправлений `string-concat-in-loop` gate отклонил по делу**:
 `StringConcatFix` теряет начальное значение переменной (`String s = "x"; for … s += …` → `new StringBuilder()`).
 Пример: `rleDecode` печатает `ffff` вместо `aaabbbccccddddddeffff`. Запрос роли 2b — STATUS «Запросы».
+
+После исправления `StringConcatFix` (`append(s)` в начале builder) gate не отклоняет ни одного исправления: 15 применено, verify 14/14.

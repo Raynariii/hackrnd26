@@ -75,6 +75,28 @@ class FixEngineTest {
         }
     }
 
+    /** Компилирует исходник класса {@code A} и вызывает его статический метод с одним аргументом. */
+    private static Object run(String code, String className, String method, Object arg) throws Exception {
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        JavaFileObject unit = new SimpleJavaFileObject(URI.create("string:///A.java"), JavaFileObject.Kind.SOURCE) {
+            @Override
+            public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+                return code;
+            }
+        };
+        Path output = Files.createTempDirectory("blueprints-fix-run");
+        try (StandardJavaFileManager files = compiler.getStandardFileManager(null, null, StandardCharsets.UTF_8)) {
+            assertThat(compiler.getTask(new StringWriter(), files, null,
+                    List.of("-proc:none", "-d", output.toString()), null, List.of(unit)).call()).isTrue();
+        }
+        try (java.net.URLClassLoader loader = new java.net.URLClassLoader(new java.net.URL[] {output.toUri().toURL()})) {
+            java.lang.reflect.Method m = java.util.Arrays.stream(Class.forName(className, true, loader).getDeclaredMethods())
+                    .filter(x -> x.getName().equals(method)).findFirst().orElseThrow();
+            m.setAccessible(true);
+            return m.invoke(null, arg);
+        }
+    }
+
     @Test
     void buildsHashSetInsteadOfListLookup() {
         String source = """
@@ -101,6 +123,27 @@ class FixEngineTest {
     }
 
     @Test
+    void stringBuilderKeepsInitialValue() throws Exception {
+        String source = """
+                class A {
+                    static String f(java.util.List<String> items) {
+                        String csv = "id;name\\n";
+                        for (String item : items) {
+                            csv += item + "\\n";
+                        }
+                        return csv;
+                    }
+                }
+                """;
+
+        String code = apply(source, "string-concat-in-loop").code();
+
+        assertThat(code).contains("var _sb = new java.lang.StringBuilder().append(csv);");
+        assertThat(compiles(code)).isTrue();
+        assertThat(run(code, "A", "f", java.util.List.of("a", "b"))).isEqualTo("id;name\na\nb\n");
+    }
+
+    @Test
     void replacesConcatenationWithStringBuilder() {
         String source = """
                 class A {
@@ -116,7 +159,7 @@ class FixEngineTest {
 
         String code = apply(source, "string-concat-in-loop").code();
 
-        assertThat(code).contains("var _sb = new java.lang.StringBuilder();");
+        assertThat(code).contains("var _sb = new java.lang.StringBuilder().append(result);");
         assertThat(code).contains("_sb.append(item)");
         assertThat(code).contains("result = _sb.toString();");
         assertThat(reparses(code)).isTrue();
@@ -316,7 +359,7 @@ class FixEngineTest {
 
         String code = apply(source, "string-concat-in-loop").code();
 
-        assertThat(code).contains("\n        var _sb = new java.lang.StringBuilder();");
+        assertThat(code).contains("\n        var _sb = new java.lang.StringBuilder().append(result);");
         assertThat(code).contains("\n        result = _sb.toString();");
         assertThat(code).doesNotContain("\n    var _sb");
     }

@@ -14,6 +14,9 @@ import io.blueprints.core.model.ProjectModel;
 /**
  * {@code s += item} в цикле → {@code StringBuilder}: строка не копируется на каждой итерации.
  *
+ * <p>Builder начинается с текущего значения переменной ({@code append(s)}): иначе {@code String s = "x"} перед
+ * циклом потерялся бы. {@code append(null)} даёт {@code "null"} — так же, как {@code s += …}.
+ *
  * <p>Отказываемся, если переменная объявлена внутри цикла или читается в нём (кроме самих
  * конкатенаций): иначе замена на {@code StringBuilder} изменила бы поведение.
  */
@@ -52,7 +55,7 @@ public final class StringConcatFix implements Fixer {
         FixSupport.requireNoReadsInside(loop, variable);
         String builder = FixSupport.uniqueName(assign, "_sb");
         FixSupport.insertBefore(FixSupport.loopStatement(loop), StaticJavaParser.parseStatement(
-                "var " + builder + " = new java.lang.StringBuilder();"));
+                "var " + builder + " = new java.lang.StringBuilder().append(" + variable + ");"));
         for (AssignExpr candidate : loop.findAll(AssignExpr.class)) {
             if (!variable.equals(FixSupport.assignTargetName(candidate))) {
                 continue;
