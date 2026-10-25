@@ -199,6 +199,19 @@ public final class MonolithApplier {
                 .map(member -> (TypeDeclaration<?>) member)
                 .forEach(type -> type.getModifiers()
                         .removeIf(modifier -> modifier.getKeyword() == Modifier.Keyword.PRIVATE));
+        // Перенесённый код читает и private-члены вложенных классов (03-bank: Main.BankAccount.flags) — внутри
+        // одного класса это можно, из нового класса нет. Интерфейсы не трогаем: метод без модификатора в них абстрактный.
+        for (TypeDeclaration<?> nested : owner.findAll(TypeDeclaration.class)) {
+            if (nested == owner || (nested instanceof ClassOrInterfaceDeclaration declaration && declaration.isInterface())) {
+                continue;
+            }
+            nested.getMembers().forEach(member -> {
+                if (member instanceof com.github.javaparser.ast.nodeTypes.modifiers.NodeWithPrivateModifier<?> withPrivate
+                        && !(member instanceof TypeDeclaration<?>)) {
+                    withPrivate.setPrivate(false);
+                }
+            });
+        }
 
         Map<String, String> movedTo = new LinkedHashMap<>();
         groups.forEach(group -> group.methods()
