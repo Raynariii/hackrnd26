@@ -13,6 +13,15 @@ class OutputNormalizerTest {
     }
 
     @Test
+    void lambdaClassNamesDoNotDependOnRun() {
+        assertThat(OutputNormalizer.normalize("Main$PriceRule$$Lambda/0x00007f82d0003128@6d06d69c"))
+                .isEqualTo(OutputNormalizer.normalize("Main$PriceRule$$Lambda/0x00007fa6a0003128@7852e922"))
+                .isEqualTo("Main$PriceRule$$Lambda@HASH");
+        assertThat(OutputNormalizer.normalize("Main$$Lambda$14/0x0000000800c03000@1b6d3586"))
+                .isEqualTo("Main$$Lambda@HASH");
+    }
+
+    @Test
     void dropsJvmNoiseAndSandboxPaths() {
         String stderr = "Picked up JAVA_TOOL_OPTIONS: -Dfoo=bar\n/tmp/run-123456/src/Main.java not found\n";
         assertThat(OutputNormalizer.normalize(stderr)).isEqualTo("Main.java not found\n");
