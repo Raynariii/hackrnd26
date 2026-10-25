@@ -1,7 +1,7 @@
 // Путь жюри через интерфейс на собранном стеке (docker compose up → http://localhost:3000): браузер → nginx → api → runner.
 // Дымовой тест CI (.github/scripts/compose-smoke.py) проверяет тот же стек через API; этот — через UI, как его увидит жюри.
 //
-// Запуск:  cd frontend && npm i --no-save playwright@1.63.0 && npx playwright install --with-deps chromium
+// Запуск:  cd frontend && npm i --no-save playwright@1.48.2 && npx playwright install --with-deps chromium
 //          JURY_URL=http://localhost:3000 node e2e/jury.mjs [папка для скриншотов]
 // Пример — corpus/06-demo-warehouse (README «Сценарий демо»). Любой провал — ненулевой код выхода и скриншот.
 import fs from 'node:fs';
@@ -16,9 +16,14 @@ const OUT = process.argv[2] ?? path.join(ROOT, 'frontend/e2e-out');
 fs.mkdirSync(OUT, { recursive: true });
 
 let failed = 0;
+// В GitHub Actions каждая строка ещё и аннотация: её видно в PR и через API, не открывая лог.
+const CI = !!process.env.GITHUB_ACTIONS;
+const annotate = (level, text) => { if (CI) console.log(`::${level} title=Путь жюри через UI::${text.replace(/\r?\n/g, ' ')}`); };
 const check = (name, ok, extra = '') => {
   if (!ok) failed++;
-  console.log(`${ok ? 'OK  ' : 'FAIL'} ${name}${extra ? ` — ${extra}` : ''}`);
+  const line = `${name}${extra ? ` — ${extra}` : ''}`;
+  console.log(`${ok ? 'OK  ' : 'FAIL'} ${line}`);
+  if (!ok) annotate('error', line);
 };
 const errors = [];
 const browser = await chromium.launch();
@@ -33,7 +38,9 @@ const step = async (name, fn) => {
     await fn();
   } catch (e) {
     failed++;
-    console.log(`FAIL ${name} — ${String(e.message ?? e).split('\n')[0]}`);
+    const line = `${name} — ${String(e.message ?? e).split('\n')[0]}`;
+    console.log(`FAIL ${line}`);
+    annotate('error', line);
     await shot(`fail-${name.replace(/[^\p{L}\d]+/gu, '-')}`);
   }
 };
@@ -161,4 +168,5 @@ check('нет уведомлений об ошибке', !notice, notice);
 check('нет ошибок страницы', errors.length === 0, errors.slice(0, 3).join(' | '));
 await browser.close();
 console.log(failed ? `\n${failed} провал(ов), скриншоты — ${OUT}` : '\nпуть жюри через UI пройден');
+annotate(failed ? 'error' : 'notice', failed ? `${failed} провал(ов)` : 'пройден целиком');
 process.exit(failed ? 1 : 0);
