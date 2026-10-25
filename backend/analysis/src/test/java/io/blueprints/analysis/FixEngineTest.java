@@ -165,6 +165,60 @@ class FixEngineTest {
     }
 
     @Test
+    void refusesForEachWhenLoopIsNotAFullTraversal() {
+        String tail = """
+                class A {
+                    void f(java.util.LinkedList<String> items, int from) {
+                        for (int i = from; i < items.size(); i++) {
+                            System.out.println(items.get(i));
+                        }
+                    }
+                }
+                """;
+        String everySecond = """
+                class A {
+                    void f(java.util.LinkedList<String> items) {
+                        for (int i = 0; i < items.size(); i += 2) {
+                            System.out.println(items.get(i));
+                        }
+                    }
+                }
+                """;
+        String fixedBound = """
+                class A {
+                    void f(java.util.LinkedList<String> items) {
+                        for (int i = 0; i < 3; i++) {
+                            System.out.println(items.get(i));
+                        }
+                    }
+                }
+                """;
+        for (String source : List.of(tail, everySecond, fixedBound)) {
+            assertThatThrownBy(() -> apply(source, "linked-list-index-access"))
+                    .isInstanceOf(FixNotApplicableException.class)
+                    .hasMessageContaining("не по всем элементам");
+        }
+    }
+
+    @Test
+    void forEachAcceptsPrefixIncrementAndPlusOne() {
+        for (String update : List.of("++i", "i += 1")) {
+            String source = """
+                    class A {
+                        void f(java.util.LinkedList<String> items) {
+                            for (int i = 0; i < items.size(); %s) {
+                                System.out.println(items.get(i));
+                            }
+                        }
+                    }
+                    """.formatted(update);
+            String code = apply(source, "linked-list-index-access").code();
+            assertThat(code).contains("for (var _item : items)");
+            assertThat(compiles(code)).isTrue();
+        }
+    }
+
+    @Test
     void refusesWhenStringIsReadInsideLoop() {
         String source = """
                 class A {

@@ -11,6 +11,9 @@ import com.github.javaparser.ast.expr.FieldAccessExpr;
 import com.github.javaparser.ast.expr.IntegerLiteralExpr;
 import com.github.javaparser.ast.expr.MethodCallExpr;
 import com.github.javaparser.ast.expr.NameExpr;
+import com.github.javaparser.ast.expr.UnaryExpr;
+import com.github.javaparser.ast.expr.VariableDeclarationExpr;
+import com.github.javaparser.ast.stmt.ForStmt;
 import com.github.javaparser.ast.stmt.BlockStmt;
 import com.github.javaparser.ast.stmt.Statement;
 import io.blueprints.analysis.Ast;
@@ -123,6 +126,47 @@ final class FixSupport {
                         + " читается внутри цикла: замена на StringBuilder изменила бы поведение");
             }
         }
+    }
+
+    /**
+     * Цикл должен обходить коллекцию целиком: счётчик от 0, условие {@code i < receiver.size()}, шаг {@code i++}.
+     * Иначе for-each обошёл бы другие элементы ({@code for (int i = from; …)} — хвост списка, {@code i += 2} — каждый
+     * второй) и изменил бы поведение.
+     */
+    static void requireFullTraversal(ForStmt loop, String counter, String receiver) {
+        String why = "Цикл идёт не по всем элементам " + receiver
+                + " (от 0 до size() с шагом 1): for-each изменил бы поведение — меняйте вручную";
+        boolean startsAtZero = loop.getInitialization().size() == 1
+                && loop.getInitialization().get(0) instanceof VariableDeclarationExpr declaration
+                && declaration.getVariables().size() == 1
+                && declaration.getVariable(0).getNameAsString().equals(counter)
+                && declaration.getVariable(0).getInitializer()
+                        .filter(init -> init instanceof IntegerLiteralExpr literal && asLong(literal) == 0)
+                        .isPresent();
+        boolean upToSize = loop.getCompare()
+                .filter(compare -> compare instanceof BinaryExpr binary
+                        && binary.getOperator() == BinaryExpr.Operator.LESS
+                        && binary.getLeft() instanceof NameExpr left && left.getNameAsString().equals(counter)
+                        && binary.getRight() instanceof MethodCallExpr size
+                        && "size".equals(size.getNameAsString()) && size.getArguments().isEmpty()
+                        && receiver.equals(receiverName(size)))
+                .isPresent();
+        boolean stepOne = loop.getUpdate().size() == 1 && isIncrementByOne(loop.getUpdate().get(0), counter);
+        if (!startsAtZero || !upToSize || !stepOne) {
+            throw new FixNotApplicableException(why);
+        }
+    }
+
+    private static boolean isIncrementByOne(Expression update, String counter) {
+        if (update instanceof UnaryExpr unary) {
+            return (unary.getOperator() == UnaryExpr.Operator.POSTFIX_INCREMENT
+                    || unary.getOperator() == UnaryExpr.Operator.PREFIX_INCREMENT)
+                    && unary.getExpression() instanceof NameExpr name && name.getNameAsString().equals(counter);
+        }
+        return update instanceof AssignExpr assign
+                && assign.getOperator() == AssignExpr.Operator.PLUS
+                && assign.getTarget() instanceof NameExpr name && name.getNameAsString().equals(counter)
+                && assign.getValue() instanceof IntegerLiteralExpr one && asLong(one) == 1;
     }
 
     /** Счётчик цикла должен использоваться только для {@code get(i)}, иначе for-each изменит смысл. */

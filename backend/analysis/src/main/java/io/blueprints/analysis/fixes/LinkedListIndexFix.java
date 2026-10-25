@@ -15,8 +15,8 @@ import io.blueprints.core.model.ProjectModel;
 /**
  * {@code list.get(i)} по {@code LinkedList} в классическом {@code for} → обход for-each.
  *
- * <p>Отказываемся, если счётчик используется не только для {@code get(i)} или коллекция меняется
- * в цикле: тогда обход за один проход изменил бы поведение программы.
+ * <p>Отказываемся, если цикл идёт не от 0 до {@code size()} с шагом 1, счётчик используется не только для
+ * {@code get(i)} или коллекция меняется в цикле: тогда обход за один проход изменил бы поведение программы.
  */
 public final class LinkedListIndexFix implements Fixer {
 
@@ -41,6 +41,7 @@ public final class LinkedListIndexFix implements Fixer {
             if (counter == null) {
                 throw new FixNotApplicableException("У цикла нет переменной-счётчика");
             }
+            FixSupport.requireFullTraversal(loop, counter, receiver);
             FixSupport.requireNotMutated(loop, receiver);
             FixSupport.requireCounterUsedOnlyForIndex(loop, counter, receiver);
             return null;
@@ -63,6 +64,7 @@ public final class LinkedListIndexFix implements Fixer {
         if (counter == null) {
             throw new FixNotApplicableException("У цикла нет переменной-счётчика");
         }
+        FixSupport.requireFullTraversal(loop, counter, receiver);
         FixSupport.requireNotMutated(loop, receiver);
         FixSupport.requireCounterUsedOnlyForIndex(loop, counter, receiver);
         String item = FixSupport.uniqueName(call, "_item");
