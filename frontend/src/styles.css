@@ -67,6 +67,10 @@
   --tint-accent-text: #a9c4ff;
   --chip-bg: #18181b;
   --shadow-pop: 0 1px 2px rgba(0, 0, 0, .5), 0 24px 60px rgba(0, 0, 0, .6);
+  /* иконки дерева и вкладок: цвет вида члена класса (как в IDE) */
+  --ic-folder: #8f9bb3; --ic-java: #f0883e; --ic-class: #6d9cff; --ic-interface: #3ec7b4;
+  --ic-enum: #c792ea; --ic-method: #f2b35b; --ic-ctor: #5cc8d9; --ic-field: #a3a3ad;
+  --on-accent: #fff;
   color-scheme: dark;
 }
 
@@ -132,6 +136,10 @@
   --chip-bg: #ffffff;
   --tint-accent: #e7effd;
   --tint-accent-text: #2251b8;
+  /* иконки на белом: контраст ≥ 3:1 */
+  --ic-folder: #66708a; --ic-java: #c25a10; --ic-class: #2f6fe0; --ic-interface: #0e8a7c;
+  --ic-enum: #8a3fc2; --ic-method: #a86c0c; --ic-ctor: #17859a; --ic-field: #6b6b75;
+  --on-accent: #fff;
   color-scheme: light;
 }
 
@@ -176,7 +184,7 @@ button:hover:not(:disabled), .button:hover { background: var(--hover); }
 button:active:not(:disabled) { background: var(--pressed); }
 button:focus-visible, .button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 button:disabled { opacity: .45; cursor: default; }
-button.primary { background: var(--accent-btn); border-color: var(--accent-btn); color: #fff; }
+button.primary { background: var(--accent-btn); border-color: var(--accent-btn); color: var(--on-accent); }
 button.primary:hover:not(:disabled) { background: var(--accent-btn-hover); border-color: var(--accent-btn-hover); }
 button.danger { color: var(--err); }
 button.danger:hover:not(:disabled) { background: var(--err-soft); border-color: var(--err-border); }
@@ -211,12 +219,12 @@ h3 { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--text); }
 }
 .app-logo {
   width: 28px; height: 28px; border-radius: var(--r-md); display: grid; place-items: center; flex: none;
-  background: var(--accent-btn); color: #fff;
+  background: var(--accent-btn); color: var(--on-accent);
 }
 .project-widget {
   display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border-radius: var(--r-md); min-width: 0;
 }
-.project-name { font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.project-name { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
 .toolbar .muted {
   font-size: 12px; font-variant-numeric: tabular-nums; padding: 1px 7px; border-radius: 999px;
   background: var(--island); border: 1px solid var(--border);
@@ -224,7 +232,7 @@ h3 { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--text); }
 .toolbar-spacer { flex: 1; }
 .toolbar button { background: transparent; border-color: transparent; }
 .toolbar button:hover:not(:disabled) { background: var(--pressed); }
-.toolbar button.primary { background: var(--accent-btn); border-color: var(--accent-btn); color: #fff; }
+.toolbar button.primary { background: var(--accent-btn); border-color: var(--accent-btn); color: var(--on-accent); }
 .toolbar button.primary:hover:not(:disabled) { background: var(--accent-btn-hover); }
 .run-widget { display: flex; align-items: center; gap: 4px; padding: 3px; border-radius: var(--r-md); background: var(--island); border: 1px solid var(--border); }
 .run-widget button { height: 28px; }
@@ -247,7 +255,7 @@ h3 { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--text); }
 .stripe-btn[aria-pressed='true']:hover:not(:disabled) { background: var(--stripe-active-bg); color: var(--stripe-active-text); }
 .stripe-badge {
   position: absolute; top: 1px; right: 0; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 999px;
-  background: var(--err); color: #fff; font-size: 9.5px; font-weight: 600; line-height: 15px; text-align: center;
+  background: var(--err); color: var(--on-accent); font-size: 10px; font-weight: 600; line-height: 15px; text-align: center;
 }
 
 .island {
@@ -368,7 +376,7 @@ button.status-item:hover:not(:disabled) { background: var(--pressed); color: var
 
 .level-overview .block-title { font-size: 12.5px; font-weight: 600; }
 .level-overview .block-code { color: var(--node-title); }
-.level-method .block-code { font-size: 11.5px; }
+.level-method .block-code { font-size: 11px; }
 
 .block {
   position: relative; display: flex; align-items: center; justify-content: center;
@@ -388,7 +396,7 @@ button.status-item:hover:not(:disabled) { background: var(--pressed); color: var
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .block-warning {
-  background: var(--err); color: #fff; border-radius: 999px; min-width: 16px; height: 16px; padding: 0 4px;
+  background: var(--err); color: var(--on-accent); border-radius: 999px; min-width: 16px; height: 16px; padding: 0 4px;
   display: grid; place-items: center; font-size: 10px; font-weight: 600; flex: none; cursor: help;
 }
 .block-warning.sev-medium { background: var(--warn); }
@@ -465,8 +473,8 @@ button.status-item:hover:not(:disabled) { background: var(--pressed); color: var
 .finding.sev-high .finding-head > svg { color: var(--err); }
 .finding.sev-medium .finding-head > svg { color: var(--warn); }
 .finding.sev-low .finding-head > svg { color: var(--text-3); }
-.finding-head strong { font-weight: 600; font-size: 13.5px; line-height: 1.35; }
-.finding-head .muted { font-family: var(--font-code); font-size: 11.5px; white-space: nowrap; }
+.finding-head strong { font-weight: 600; font-size: 13px; line-height: 1.35; }
+.finding-head .muted { font-family: var(--font-code); font-size: 11px; white-space: nowrap; }
 
 .finding-text { color: var(--text-2); font-size: 12.5px; margin-left: 26px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .finding.open .finding-text { display: block; }
@@ -482,8 +490,7 @@ button.status-item:hover:not(:disabled) { background: var(--pressed); color: var
 .complexity-change b { color: var(--ok); font-weight: 600; }
 .complexity-effect { font-size: 12px; color: var(--text-2); }
 .finding-fix { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 12px 0 0 26px; cursor: default; }
-.finding-fix button { height: 28px; font-size: 12.5px; background: var(--tint-accent); color: var(--tint-accent-text); border-color: transparent; }
-.finding-fix button:hover:not(:disabled) { background: color-mix(in srgb, var(--tint-accent) 80%, var(--accent)); }
+.finding-fix button { height: 28px; font-size: 12.5px; }
 .finding-fix-desc { font-size: 12px; flex-basis: 100%; color: var(--text-2); }
 .finding-error { font-size: 12.5px; margin: 8px 0 0 26px; cursor: default; }
 .empty-state { color: var(--text-2); padding: 24px 4px; text-align: center; }
@@ -528,7 +535,7 @@ tbody tr:hover td { background: var(--island-2); }
 .vs-head { display: flex; align-items: center; gap: 14px; padding: 18px 20px; border-bottom: 1px solid var(--divider); }
 .vs-head.ok { background: var(--ok-soft); }
 .vs-head.fail { background: var(--err-soft); }
-.vs-icon { font-size: 17px; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; flex: none; color: #fff; }
+.vs-icon { font-size: 17px; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; flex: none; color: var(--on-accent); }
 .vs-head.ok .vs-icon { background: var(--ok-icon); }
 .vs-head.fail .vs-icon { background: var(--err); }
 .vs-title { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
@@ -602,7 +609,7 @@ tbody tr:hover td { background: var(--island-2); }
 .inspector-note { font-size: 12.5px; color: var(--text-2); }
 .inspector-error { font-size: 12.5px; white-space: pre-wrap; }
 .inspector-list { margin: 0; padding-left: 18px; font-size: 12.5px; display: flex; flex-direction: column; gap: 3px; }
-.inspector-list code { color: var(--text-2); font-size: 11.5px; word-break: break-all; }
+.inspector-list code { color: var(--text-2); font-size: 11px; word-break: break-all; }
 .kind-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .chip { height: 26px; padding: 0 10px; font-size: 12px; border-radius: 999px; }
 .chip.active { border-color: var(--accent); background: var(--selected); color: var(--text); }
@@ -637,10 +644,10 @@ tbody tr:hover td { background: var(--island-2); }
 .toolbar { gap: 10px; padding: 0 var(--gap); }
 /* логотип по центру над полосой инструментов: левые края тулбара и рабочей области совпадают */
 .toolbar .app-logo { margin: 0 calc((var(--stripe-w) - 32px) / 2); }
-.app-logo { width: 32px; height: 32px; border-radius: 10px; background: var(--accent-btn); }
+.app-logo { width: 32px; height: 32px; border-radius: var(--r-md); background: var(--accent-btn); }
 .brand-name { font-weight: 700; font-size: 15px; letter-spacing: -0.02em; white-space: nowrap; margin-right: 4px; }
 .project-widget {
-  height: 36px; padding: 0 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--island);
+  height: 36px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--island);
 }
 .toolbar .project-widget .muted { background: var(--island-2); }
 .chips { display: flex; gap: 6px; min-width: 0; overflow: hidden; }
@@ -654,22 +661,22 @@ tbody tr:hover td { background: var(--island-2); }
 .chip-metric.warn b, .chip-metric.warn svg { color: var(--warn); }
 
 .segmented {
-  display: inline-flex; padding: 3px; gap: 2px; border-radius: 12px; background: var(--island); border: 1px solid var(--border);
+  display: inline-flex; padding: 3px; gap: 2px; border-radius: calc(var(--r-sm) + 3px); background: var(--island); border: 1px solid var(--border);
 }
 .segmented button {
-  height: 30px; padding: 0 14px; border: 0; border-radius: 9px; background: transparent; color: var(--text-2); font-weight: 500;
+  height: 30px; padding: 0 14px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--text-2); font-weight: 500;
 }
 .segmented button:hover:not(:disabled) { background: var(--hover); color: var(--text); }
-.segmented button[aria-pressed='true'] { background: var(--accent-btn); color: #fff; box-shadow: 0 2px 10px rgba(47, 102, 224, .35); }
-.toolbar .run-widget { border-radius: 12px; padding: 3px; }
-.toolbar .run-widget button { border-radius: 9px; height: 30px; }
+.segmented button[aria-pressed='true'] { background: var(--accent-btn); color: var(--on-accent); box-shadow: 0 2px 10px color-mix(in srgb, var(--accent-btn) 35%, transparent); }
+.toolbar .run-widget { border-radius: calc(var(--r-sm) + 3px); padding: 3px; }
+.toolbar .run-widget button { border-radius: var(--r-sm); height: 30px; }
 
 /* ===== проводник: файлы и структура ===== */
 .explorer-head { display: flex; align-items: center; justify-content: space-between; }
 .tree { list-style: none; margin: 0; padding: 0; font-size: 13px; }
 .tree .tree { padding-left: 14px; }
 .tree-row {
-  display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: 10px; cursor: pointer;
+  display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: var(--r-sm); cursor: pointer;
   color: var(--text); user-select: none; white-space: nowrap; min-width: 0;
 }
 .tree-row:hover { background: var(--hover); }
@@ -679,17 +686,17 @@ tbody tr:hover td { background: var(--island-2); }
 .tree-row .chev { color: var(--text-3); flex: none; transition: transform .12s; }
 .tree-row .chev.open { transform: rotate(90deg); }
 .tree-row .count {
-  font-size: 10.5px; font-weight: 600; min-width: 18px; height: 17px; padding: 0 5px; border-radius: 999px; line-height: 17px; text-align: center;
+  font-size: 11px; font-weight: 600; min-width: 18px; height: 17px; padding: 0 5px; border-radius: 999px; line-height: 17px; text-align: center;
   background: var(--err-soft); color: var(--err); border: 1px solid var(--err-border);
 }
-.icon-folder { color: #8f9bb3; }
-.icon-java { color: #f0883e; }
-.icon-class { color: #6d9cff; }
-.icon-interface { color: #3ec7b4; }
-.icon-enum { color: #c792ea; }
-.icon-method { color: #f2b35b; }
-.icon-ctor { color: #5cc8d9; }
-.icon-field { color: #a3a3ad; }
+.icon-folder { color: var(--ic-folder); }
+.icon-java { color: var(--ic-java); }
+.icon-class { color: var(--ic-class); }
+.icon-interface { color: var(--ic-interface); }
+.icon-enum { color: var(--ic-enum); }
+.icon-method { color: var(--ic-method); }
+.icon-ctor { color: var(--ic-ctor); }
+.icon-field { color: var(--ic-field); }
 .section-title { display: flex; align-items: center; justify-content: space-between; margin: 22px 0 8px; font-size: 12px; font-weight: 600; color: var(--text-2); }
 .section-title:first-child { margin-top: 0; }
 
@@ -719,14 +726,14 @@ tbody tr:hover td { background: var(--island-2); }
 
 /* ===== карточки и диалог — крупнее скругления ===== */
 .applied-fix, .decompose-class, .vs-case, .inspector-form { border-radius: var(--r-lg); }
-.verify-screen { border-radius: 20px; }
-.editor-tab { border-radius: 10px; }
-.editor-tab svg { color: #f0883e; }
-.tabs button, .tab { border-radius: 9px; height: 30px; }
+.verify-screen { border-radius: var(--r-xl); }
+.editor-tab { border-radius: var(--r-sm); }
+.editor-tab svg { color: var(--ic-java); }
+.tabs button, .tab { border-radius: var(--r-sm); height: 30px; }
 .notification { border-radius: var(--r-lg); }
 
 .head-chips { margin-left: auto; }
-.head-chips .chip-metric { height: 26px; font-size: 11.5px; }
+.head-chips .chip-metric { height: 26px; font-size: 12px; }
 .explorer-body { flex: 1 1 auto; }
 .inspector-dock {
   flex: 0 1 auto; max-height: 58%; overflow: auto; padding: 14px 16px 16px; border-top: 1px solid var(--divider);
@@ -749,7 +756,7 @@ tbody tr:hover td { background: var(--island-2); }
   margin: 0; padding: 8px 10px; border-radius: var(--r-sm); background: var(--island); border: 1px solid var(--border);
   font-family: 'JetBrains Mono', monospace; font-size: 12px; overflow-x: auto; white-space: pre;
 }
-.advice-note { font-size: 11.5px; }
+.advice-note { font-size: 12px; }
 .inspector-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .inspector-head h3 { margin: 0; }
 .inspector-complexity {
@@ -795,3 +802,28 @@ tbody tr:hover td { background: var(--island-2); }
   border-radius: var(--r-sm); color: var(--text-2);
 }
 .show-right:hover { color: var(--text); background: var(--pressed); }
+
+/* ===== единая система контролов (аудит интерфейса) =====
+   обычная кнопка — 30px, текст 13px, иконка 15px; компактная (в панелях и карточках) — 28px, 12.5px, иконка 14px;
+   иконка-кнопка — 16px; полоса инструментов — 18px; все контролы со скруглением --r-sm. */
+button { border-radius: var(--r-sm); }
+button > svg { width: 15px; height: 15px; flex: none; }
+.finding-fix button, .inspector-actions button, .decompose-head button, .decompose-apply button,
+.advice-ask, .applied-fix .inspector-actions button { height: 28px; padding: 0 10px; font-size: 12.5px; }
+.finding-fix button > svg, .inspector-actions button > svg, .decompose-head button > svg, .decompose-apply button > svg,
+.advice-ask > svg { width: 14px; height: 14px; }
+button.icon > svg, button.ghost.icon > svg, .show-right > svg { width: 16px; height: 16px; }
+.stripe-btn > svg { width: 18px; height: 18px; }
+.welcome-actions button > svg { width: 16px; height: 16px; }
+/* палитра: элементы не сжимаются, когда колонка упирается в высоту холста — прокрутка вместо сплющивания */
+.palette-item { flex: none; }
+.status-item > svg, .chip-metric > svg { width: 13px; height: 13px; }
+
+/* палитра — своя колонка у левого края холста: блок-схема и кнопки масштаба начинаются правее и не уходят под неё */
+.canvas.with-palette { padding-left: calc(var(--palette-w) + 20px); }
+.palette { width: var(--palette-w); box-sizing: border-box; max-height: calc(100% - 20px); }
+:root { --palette-w: 132px; }
+/* разбиение: шапка класса без заливки кнопки, длинные сигнатуры переносятся внутри карточки */
+.decompose-class-head, .decompose-class-head:hover:not(:disabled) { background: transparent; border-color: transparent; }
+.decompose-class li { min-width: 0; }
+.decompose-class li code, .decompose-class li .link-button { min-width: 0; overflow-wrap: anywhere; white-space: normal; text-align: left; height: auto; }

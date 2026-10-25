@@ -685,7 +685,7 @@ export function App() {
         )}
               {view !== 'code' && showRightButton}
             </div>
-            <div className="canvas">
+            <div className={`canvas ${graph?.level === 'method' ? 'with-palette' : ''}`}>
               {graph?.level === 'method' && (
                 <BlockPalette canPick={selection.length === 1 && canInsertAfter(selection[0])}
                   onPick={(kind) => insertFromPalette(kind, selection.length === 1 ? selection[0] : null)} />
