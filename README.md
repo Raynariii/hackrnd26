@@ -64,18 +64,6 @@ curl -s -H 'Content-Type: application/json' -d '{"benchmark":true}' $API/project
 curl -s -o warehouse.zip $API/projects/$ID/export && unzip -q warehouse.zip && (cd warehouse-v2 && mvn -q test)
 ```
 
-## Что сдаём (по требованиям кейса)
-
-| Требование | Где |
-|---|---|
-| Исходный код с инструкцией запуска | этот репозиторий, разделы выше |
-| Веб-демо / воспроизводимая сборка | `docker compose up --build` → http://localhost:3000 |
-| Автотесты и результат их запуска | `cd backend && mvn -B verify` (JUnit 5, все модули; отчёты в `*/target/surefire-reports`), CI в GitHub Actions; golden-master тесты любого проекта — `GET /api/projects/{id}/export` → `mvn test` |
-| Описание: архитектура, поддержанный scope, ограничения | [docs/architecture.md](docs/architecture.md), [docs/scope.md](docs/scope.md) |
-| Тестовые монолиты | [corpus/](corpus/README.md): 6 монолитов (scope 1–4 + бонус) с заложенными дефектами, входами и bench-входами |
-
-## Запуск для разработки
-
 Требуется Java 21+, Maven 3.9+, Node 22+.
 
 ```bash
