@@ -123,7 +123,10 @@ public final class MetricsCalculator {
             if (node == null) {
                 continue;
             }
-            result = result.max(estimate(node, Ast.enclosingLoops(node).size()));
+            int loops = Ast.enclosingLoops(node).size();
+            // Сам блок исполняется на каждой итерации каждого цикла-предка: внутри двух циклов — не меньше O(n²),
+            // даже если это простой оператор (count++), а не цикл или вызов.
+            result = result.max(BigO.of(loops)).max(estimate(node, loops));
         }
         return result;
     }
