@@ -52,7 +52,7 @@ class ComplexityApiTest {
     ObjectMapper json;
 
     @Test
-    void innerLoopIsQuadraticPlainStatementConstantWholeMethodQuadratic() throws Exception {
+    void innerLoopAndStatementInsideItQuadraticOutsideConstantWholeMethodQuadratic() throws Exception {
         String body = json.writeValueAsString(Map.of("files", List.of(Map.of("path", "Main.java", "content", SOURCE))));
         String id = json.readTree(mvc.perform(post("/api/projects").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andReturn().getResponse().getContentAsString()).get("id").asText();
@@ -67,8 +67,12 @@ class ComplexityApiTest {
                 .andReturn().getResponse().getContentAsString());
         List<String> inner = new ArrayList<>();
         List<String> variables = new ArrayList<>();
+        List<String> increments = new ArrayList<>();
         for (JsonNode n : flow.get("nodes")) {
             String code = n.path("code").asText("");
+            if (code.contains("count++")) {
+                increments.add(n.get("id").asText());
+            }
             if ("loop".equals(n.get("kind").asText()) && code.contains("b : xs")) {
                 inner.add(n.get("id").asText());
             }
@@ -86,6 +90,11 @@ class ComplexityApiTest {
                         .content(json.writeValueAsString(Map.of("nodeIds", variables.subList(0, 1)))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.current").value("O(1)"));
+        // оператор внутри двух циклов исполняется n² раз
+        mvc.perform(post("/api/projects/" + id + "/complexity").contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("nodeIds", increments))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.current").value("O(n²)"));
         mvc.perform(post("/api/projects/" + id + "/complexity").contentType(MediaType.APPLICATION_JSON)
                         .content(json.writeValueAsString(Map.of("nodeIds", List.of(method + ":start")))))
                 .andExpect(jsonPath("$.current").value("O(n²)"));

@@ -298,6 +298,37 @@ class MetricsTest {
     }
 
     @Test
+    void plainStatementInsideTwoLoopsIsQuadratic() {
+        String source = """
+                class A {
+                    int f(java.util.List<Integer> xs) {
+                        int count = 0;
+                        for (int a : xs) {
+                            for (int b : xs) {
+                                if (a + b == 0) {
+                                    count++;
+                                }
+                            }
+                        }
+                        return count;
+                    }
+                }
+                """;
+        ProjectModel model = new JavaProjectParser().parse(List.of(new SourceFile("A.java", source)));
+        var unit = model.units().values().iterator().next();
+        var increment = unit.findFirst(com.github.javaparser.ast.stmt.ExpressionStmt.class,
+                s -> s.toString().contains("count++")).orElseThrow();
+        var condition = unit.findFirst(com.github.javaparser.ast.stmt.IfStmt.class).orElseThrow();
+        var declaration = unit.findFirst(com.github.javaparser.ast.stmt.ExpressionStmt.class,
+                s -> s.toString().contains("count = 0")).orElseThrow();
+        MetricsCalculator metrics = new MetricsCalculator();
+
+        assertThat(metrics.complexityOf(model, List.of(Ast.nodeId(model, increment)))).isEqualTo(BigO.of(2));
+        assertThat(metrics.complexityOf(model, List.of(Ast.nodeId(model, condition)))).isEqualTo(BigO.of(2));
+        assertThat(metrics.complexityOf(model, List.of(Ast.nodeId(model, declaration)))).isEqualTo(BigO.constant());
+    }
+
+    @Test
     void ignoresUnknownFragmentIds() {
         String source = """
                 class A {
