@@ -5,6 +5,7 @@ import { PALETTE_MIME } from './BlockPalette';
 import { BlockNode, FrameNode, kindColor } from './BlockNode';
 import { edgePaint, layoutGraph, type Theme } from './layout';
 import type { EdgeTone } from '../flow/methodFlow';
+import type { OverviewMode } from '../flow/overviewViews';
 
 const nodeTypes = { block: BlockNode, frame: FrameNode };
 
@@ -24,6 +25,8 @@ interface Props {
   onDropKind?: (kind: NodeKind, target: GraphNode) => void;
   /** Можно ли вставить после этого узла (insertAfter): иначе он не подсвечивается и бросить нельзя. */
   canDropOn?: (node: GraphNode) => boolean;
+  /** Вид обзора: сценарий вызовов от main или разделы классов. */
+  overviewMode?: OverviewMode;
 }
 
 /** Плавно центрирует холст на узле, сохраняя масштаб. Рендерится внутри ReactFlow ради useReactFlow. */
@@ -86,7 +89,7 @@ const NO_FINDINGS: Finding[] = [];
 
 const nodeOf = (n: Node) => (n.data as { node: GraphNode }).node;
 
-export function GraphCanvas({ graph, selectedIds, onSelect, onOpenMethod, focus, findings, theme = 'light', onDropKind, canDropOn }: Props) {
+export function GraphCanvas({ graph, selectedIds, onSelect, onOpenMethod, focus, findings, theme = 'light', onDropKind, canDropOn, overviewMode = 'scenario' }: Props) {
   // Узлы живут в состоянии и принимают изменения от React Flow (размеры, выделение). Если отдавать новые
   // объекты на каждый рендер без onNodesChange, React Flow теряет замеры и на кадр прячет узлы —
   // второй клик двойного клика уходит в пустой холст, и метод не открывается.
@@ -118,7 +121,7 @@ export function GraphCanvas({ graph, selectedIds, onSelect, onOpenMethod, focus,
   useEffect(() => {
     if (!graph) return;
     let cancelled = false;
-    layoutGraph(graph, theme)
+    layoutGraph(graph, theme, overviewMode)
       .then((result) => {
         if (cancelled) return;
         setError(null);
@@ -130,7 +133,7 @@ export function GraphCanvas({ graph, selectedIds, onSelect, onOpenMethod, focus,
     return () => {
       cancelled = true;
     };
-  }, [graph, setNodes, setEdges]);
+  }, [graph, overviewMode, setNodes, setEdges]);
 
   const selectedKey = selectedIds.join('|');
   const selected = new Set(selectedIds);
@@ -187,7 +190,7 @@ export function GraphCanvas({ graph, selectedIds, onSelect, onOpenMethod, focus,
   return (
     <ReactFlow
       key={rev}
-      className={`level-${graph?.level ?? 'method'}`}
+      className={`level-${graph?.level ?? 'method'} ${graph?.level === 'overview' ? `overview-${overviewMode}` : ''}`}
       nodes={nodes}
       edges={edges}
       // Выделение — только из App и только через data.selected: собственный выбор React Flow выключен,

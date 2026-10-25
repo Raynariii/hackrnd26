@@ -102,6 +102,8 @@ public final class Members {
         if (member instanceof InitializerDeclaration i) {
             return i.isStatic() ? "static" : "{}";
         }
-        return member.toString();
+        BodyDeclaration<?> copy = member.clone();
+        copy.removeComment(); // поле печатается без комментария над ним (баннер раздела, javadoc)
+        return copy.toString();
     }
 }

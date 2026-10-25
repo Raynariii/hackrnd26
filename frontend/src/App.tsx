@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import type { OverviewMode } from './flow/overviewViews';
 import { Box, ChevronRight, ChevronsLeft, ChevronsRight, CircleAlert, CircleCheck, CircleX, Download, DraftingCompass, FileCode2, FlaskConical, FolderOpen, LayoutGrid, LoaderCircle, Moon, PanelRightOpen, Play, ShieldCheck, SquareFunction, Sun, Terminal, TriangleAlert, Upload, Workflow, X } from 'lucide-react';
 import { api, ApiRequestError, isUnsupported } from './api/client';
 import { applyRunEvent, STREAM_START } from './flow/run';
@@ -111,6 +112,9 @@ export function App() {
   /** Доля высоты холста в центральной колонке (остальное — редактор); граница перетаскивается. */
   const [split, setSplit] = useState(() => stored<number>('jb.split', 0.6));
   const [view, setView] = useState<ViewMode>(() => stored<ViewMode>('jb.view', 'split'));
+  /** Вид обзора: «Сценарий» — что делает программа (вызовы от main), «Разделы» — как устроен код. */
+  const [overviewMode, setOverviewMode] = useState<OverviewMode>(() => stored<OverviewMode>('jb.overviewMode', 'scenario'));
+  useEffect(() => store('jb.overviewMode', overviewMode), [overviewMode]);
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const centerRef = useRef<HTMLDivElement>(null);
@@ -663,6 +667,14 @@ export function App() {
                   disabled={!project} onClick={openOverview}>
                   <LayoutGrid size={15} />Обзор
                 </button>
+                {project && graph?.level !== 'method' && (
+                  <div className="segmented overview-mode" role="group" aria-label="Вид обзора">
+                    <button aria-pressed={overviewMode === 'scenario'} onClick={() => setOverviewMode('scenario')}
+                      title="Что делает программа: от main по вызовам, в порядке вызова (номер на стрелке — шаг)">Сценарий</button>
+                    <button aria-pressed={overviewMode === 'sections'} onClick={() => setOverviewMode('sections')}
+                      title="Как устроен код: классы и их разделы из комментариев">Разделы</button>
+                  </div>
+                )}
                 {openedMethod && (
                   <button role="tab" className="active" aria-selected title={openedMethod.code ?? undefined}>
                     <Workflow size={15} />{openedMethod.label}()
@@ -698,6 +710,7 @@ export function App() {
                   onOpenMethod={openMethod}
                   focus={focus}
                   findings={nodeFindings}
+                  overviewMode={overviewMode}
                   theme={theme}
                   onDropKind={graph.level === 'method' ? insertFromPalette : undefined}
                   canDropOn={canInsertAfter}
@@ -712,7 +725,7 @@ export function App() {
                       <span className="muted">или перетащите файлы в окно</span>
                     </div>
                     <ol>
-                      <li><span><strong>Обзор</strong> — классы и методы; двойной клик открывает блок-схему метода.</span></li>
+                      <li><span><strong>Обзор</strong> — «Сценарий»: что делает программа, от main по вызовам в порядке шагов; «Разделы»: классы и их разделы. Двойной клик открывает блок-схему метода.</span></li>
                       <li><span><strong>Проблемы</strong> — справа: сложность O(n²), пустые catch, магические числа; часть исправляется автоматически.</span></li>
                       <li><span><strong>Проверить поведение</strong> — версия 1 и текущая на одних входах, плюс замер скорости.</span></li>
                     </ol>

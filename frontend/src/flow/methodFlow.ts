@@ -64,6 +64,7 @@ const FRAME_TITLES = new Map<NodeKind, string>([
 ]);
 
 export function frameTitle(node: GraphNode): string {
+  if (node.meta?.sectionFrame === true) return node.label; // обзор «Разделы»: рамка раздела класса
   return FRAME_TITLES.get(node.kind) ?? node.label;
 }
 
@@ -85,6 +86,9 @@ export const HANDLE = {
   backOut: 'back-out',
   /** Выход из цикла — слева от заголовка, чтобы не идти сквозь тело. */
   exit: 'exit',
+  /** Раскладка слева направо (обзор «Сценарий»): вход слева, выход справа. */
+  west: 'west',
+  east: 'east',
 } as const;
 
 export type EdgeTone = 'yes' | 'no' | 'back' | 'exception' | 'call' | 'contains' | 'default';
@@ -127,6 +131,7 @@ export interface FlowModel {
   parentOf: Map<string, string | null>;
   /** Плотная упаковка (обзор): члены типа — сеткой внутри рамки, а не слоями по рёбрам. */
   packed: boolean;
+  direction: 'DOWN' | 'RIGHT';
 }
 
 export interface BuildOptions {
@@ -137,6 +142,10 @@ export interface BuildOptions {
    * вызовы рисуются поверх раскладки. Иначе 40 членов класса ложатся в один слой — плоская лента.
    */
   packed?: boolean;
+  /** Слои сверху вниз (блок-схема) или слева направо (сценарий вызовов). */
+  direction?: 'DOWN' | 'RIGHT';
+  /** Рёбра вне раскладки — рисуются поверх (повторные вызовы в сценарии). */
+  floating?: Set<string>;
 }
 
 export function buildFlowModel(graph: Graph, options: BuildOptions): FlowModel {
@@ -185,7 +194,8 @@ export function buildFlowModel(graph: Graph, options: BuildOptions): FlowModel {
   }
   frames.sort((a, b) => a.depth - b.depth);
 
-  const blocks: FlowBlock[] = graph.nodes.map((node) => {
+  // У рамки раздела нет своего блока-заголовка: название — в заголовке рамки.
+  const blocks: FlowBlock[] = graph.nodes.filter((node) => node.meta?.sectionFrame !== true).map((node) => {
     let parent: string | null;
     if (containers.has(node.id)) {
       parent = frameId(node.id); // заголовок группы стоит внутри своей рамки, первым
@@ -204,6 +214,7 @@ export function buildFlowModel(graph: Graph, options: BuildOptions): FlowModel {
   };
 
   const packed = Boolean(options.packed);
+  const right = options.direction === 'RIGHT';
   const edges: FlowEdge[] = graph.edges
     .filter((e) => byId.has(e.from) && byId.has(e.to))
     .filter((e) => !(packed && e.kind === 'contains'))
@@ -211,7 +222,9 @@ export function buildFlowModel(graph: Graph, options: BuildOptions): FlowModel {
       const back = isBack(e);
       const source = byId.get(e.from)!;
       const shape = nodeShape(source.kind);
-      const sourceHandle = back
+      const sourceHandle = right
+        ? HANDLE.east
+        : back
         ? HANDLE.backOut
         : e.kind === 'false' && shape === 'decision'
           ? HANDLE.no
@@ -223,13 +236,13 @@ export function buildFlowModel(graph: Graph, options: BuildOptions): FlowModel {
         back,
         label: e.label ?? DEFAULT_EDGE_LABELS.get(e.kind) ?? null,
         sourceHandle,
-        targetHandle: back ? HANDLE.backIn : HANDLE.in,
+        targetHandle: right ? HANDLE.west : back ? HANDLE.backIn : HANDLE.in,
         tone: edgeTone(e.kind, back),
-        inLayout: !back && !(packed && e.kind === 'call'),
+        inLayout: !back && !(packed && e.kind === 'call') && !options.floating?.has(e.id),
       };
     });
 
-  return { items: [...frames.map((f) => f.frame), ...blocks], edges, parentOf, packed };
+  return { items: [...frames.map((f) => f.frame), ...blocks], edges, parentOf, packed, direction: right ? 'RIGHT' : 'DOWN' };
 }
 
 function edgeTone(kind: EdgeKind, back: boolean): EdgeTone {
@@ -292,7 +305,9 @@ const PACKED_FRAME_OPTIONS: Record<string, string> = {
 
 /** Иерархический граф для elkjs: рамки — составные узлы, ребро кладётся в общий контейнер концов. */
 export function toElkGraph(model: FlowModel): ElkNodeLike {
-  const rootOptions = model.packed ? PACKED_ROOT_OPTIONS : ROOT_OPTIONS;
+  const rootOptions = model.packed ? PACKED_ROOT_OPTIONS
+    : model.direction === 'RIGHT' ? { ...ROOT_OPTIONS, 'elk.direction': 'RIGHT', 'elk.layered.spacing.nodeNodeBetweenLayers': '90', 'elk.spacing.nodeNode': '18' }
+    : ROOT_OPTIONS;
   const frameOptions = model.packed ? PACKED_FRAME_OPTIONS : FRAME_OPTIONS;
   const root: ElkNodeLike = { id: 'root', layoutOptions: rootOptions, children: [], edges: [] };
   const elkById = new Map<string, ElkNodeLike>([['root', root]]);
