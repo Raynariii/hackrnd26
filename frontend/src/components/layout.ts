@@ -1,7 +1,8 @@
 import ELK from 'elkjs/lib/elk.bundled.js';
 import { MarkerType, type Edge, type Node } from '@xyflow/react';
 import type { Graph } from '../api/types';
-import { buildFlowModel, collectBoxes, toElkGraph, type EdgeTone, type ElkNodeLike, type FlowItem } from '../flow/methodFlow';
+import { buildFlowModel, collectBoxes, toElkGraph, type EdgeTone, type ElkNodeLike, type FlowItem, type FlowModel } from '../flow/methodFlow';
+import { scenarioGraph, sectionsGraph, type OverviewMode } from '../flow/overviewViews';
 
 const elk = new ELK();
 
@@ -29,10 +30,8 @@ export function edgePaint(tone: EdgeTone, theme: Theme, base: Partial<Edge> = {}
  * Раскладка графа через elkjs. Для блок-схемы метода узлы с детьми (parent) становятся рамками-группами:
  * тело цикла, try/catch, switch. Обратные рёбра (возврат к циклу) в раскладке не участвуют и рисуются сбоку.
  */
-export async function layoutGraph(graph: Graph, theme: Theme = 'light'): Promise<{ nodes: Node[]; edges: Edge[] }> {
-  const overview = graph.level === 'overview';
-  // Обзор: типы — рамки с членами, упакованные сеткой; вызовы — поверх раскладки (иначе плоская лента).
-  const model = buildFlowModel(graph, { grouping: true, packed: overview });
+export async function layoutGraph(graph: Graph, theme: Theme = 'light', mode: OverviewMode = 'scenario'): Promise<{ nodes: Node[]; edges: Edge[] }> {
+  const model = flowModel(graph, mode);
   const layout = (await elk.layout(toElkGraph(model) as unknown as Parameters<typeof elk.layout>[0])) as unknown as ElkNodeLike;
   const boxes = collectBoxes(layout);
 
@@ -75,7 +74,8 @@ export async function layoutGraph(graph: Graph, theme: Theme = 'light'): Promise
       ...edgePaint(fe.tone, theme, {
         style: {
           strokeWidth: 1.25,
-          ...(fe.back || fe.tone === 'call' ? { strokeDasharray: '6 4' } : {}),
+          // Пунктир — возврат к циклу и вызовы поверх раскладки; дерево сценария — сплошными линиями.
+          ...(fe.back || (fe.tone === 'call' && floating) ? { strokeDasharray: '6 4' } : {}),
           ...(floating ? { opacity: 0.45 } : {}),
         },
       }),
@@ -86,4 +86,18 @@ export async function layoutGraph(graph: Graph, theme: Theme = 'light'): Promise
   });
 
   return { nodes, edges };
+}
+
+/**
+ * Блок-схема метода — слоями сверху вниз. Обзор — один из двух видов (flow/overviewViews):
+ * «Сценарий» — вызовы от main слева направо; «Разделы» — рамки типов и разделов, упакованные сеткой,
+ * вызовы поверх раскладки (иначе плоская лента).
+ */
+function flowModel(graph: Graph, mode: OverviewMode): FlowModel {
+  if (graph.level !== 'overview') return buildFlowModel(graph, { grouping: true });
+  if (mode === 'scenario') {
+    const { graph: scenario, cross } = scenarioGraph(graph);
+    return buildFlowModel(scenario, { grouping: false, direction: 'RIGHT', floating: cross });
+  }
+  return buildFlowModel(sectionsGraph(graph), { grouping: true, packed: true });
 }

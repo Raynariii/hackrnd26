@@ -71,6 +71,11 @@ public final class DefaultGraphBuilder implements GraphBuilder {
                 continue; // вложенные типы и константы enum добавляются отдельно
             }
             Map<String, Object> meta = new LinkedHashMap<>();
+            MemberNotes.section(member).ifPresent(v -> meta.put("section", v));
+            MemberNotes.doc(member).ifPresent(v -> meta.put("doc", v));
+            if (MemberNotes.isEntryPoint(member)) {
+                meta.put("entry", true);
+            }
             if (member instanceof InitializerDeclaration i) {
                 meta.put("initializer", i.isStatic() ? "static" : "instance");
             } else if (member instanceof CompactConstructorDeclaration) {

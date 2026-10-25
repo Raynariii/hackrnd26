@@ -95,6 +95,8 @@ export function BlockNode({ data }: NodeProps) {
         {node.code && <div className="block-code">{node.code}</div>}
       </div>
       <Handle type="source" id={HANDLE.out} position={Position.Bottom} />
+      <Handle type="target" id={HANDLE.west} position={Position.Left} className="handle-side" />
+      <Handle type="source" id={HANDLE.east} position={Position.Right} className="handle-side" />
       {shape === 'decision' && <Handle type="source" id={HANDLE.no} position={Position.Right} />}
       <Handle type="source" id={HANDLE.backOut} position={Position.Right} className="handle-side" style={{ top: outlined ? '50%' : '70%' }} />
       {shape === 'loop' && <Handle type="source" id={HANDLE.exit} position={Position.Left} className="handle-side" />}
