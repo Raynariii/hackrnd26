@@ -44,7 +44,7 @@ class FixEngineCorpusTest {
         sources.add(FIXTURE);
         try (Stream<Path> walk = Files.walk(CORPUS)) {
             walk.filter(Files::isRegularFile)
-                    .filter(file -> file.toString().endsWith("Main.java"))
+                    .filter(file -> file.toString().endsWith(".java")) // и монолиты кейсодателя с исходными именами
                     .sorted()
                     .forEach(sources::add);
         } catch (java.io.IOException ignored) {

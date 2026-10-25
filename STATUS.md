@@ -167,6 +167,10 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 попарное сравнение не сводится к индексу, поэтому кнопка «Применить» для него неактивна (честный отказ).
 **Для фронта:** новые id — правило `nested-loop-linear-search`, `Fix.kind = nested-loop-index` (кнопка «Применить»
 для вложенного поиска совпадения).
+- [x] `StringConcatFix` сохраняет начальное значение строки (запрос роли 4, сделано ролью 1 по просьбе пользователя):
+      builder начинается с `new StringBuilder().append(s)`. Раньше `String s = "x"` перед циклом терялся — на монолитах
+      кейсодателя gate отклонял 20 из 29 исправлений `string-concat-in-loop`, теперь отказов 0 (09: 15 применено,
+      10: 6, verify — поведение совпадает). Тест с запуском метода; `FixEngineCorpusTest` проверяет все `.java` корпуса
 **Блокеры:** —
 
 ### 2c — декомпозиция монолита
@@ -316,7 +320,7 @@ for-each, `return` + `x`). `delete` принимает `nodeId` или `nodeIds`
 | Роль 4 | Анализатор не находит заложенные дефекты: `duplicate-code` (`01-shop-orders`: `totalQuantityForCity`/`…Category`; `02-library`: ветки `fineFor`) и `linked-list-index-access` у поля объекта (`02-library`: `b.waitList.get(i)`). | Роль 2 | Сделано — PR #39 (почти-копии и LinkedList-поле) |
 | Роль 4 | **`MetricsCalculator.complexityOf`: оператор внутри циклов даёт O(1).** `estimate` учитывает глубину циклов-предков только для узлов-циклов и вызовов, поэтому `count++` (или `if`) во вложенном цикле → O(1), хотя по javadoc «блок внутри двух циклов исполняется O(n²) раз». Выделение внутреннего цикла даёт O(n²) верно. Пример — `ComplexityApiTest` (api). | Роль 2 (2a) | Сделано — PR #70 (роль 3 за 2a) |
 | Роль 4 | Обзорный граф пропускает члены класса: `static`/instance-блоки инициализации (`InitializerDeclaration`), компактный конструктор record (`CompactConstructorDeclaration`), компоненты record, константы enum (с телами). Код сохраняется, но в графе их нет — в `docs/scope.md` отмечено 🟡. | Роль 1 | Закрыт — PR #46 (роль 1) |
-| Роль 4 | **Баг `StringConcatFix`: теряется начальное значение строки.** `String s = "x"; for (…) s += …;` → `var _sb = new StringBuilder(); … s = _sb.toString();` — `"x"` пропадает. Gate отклоняет (поведение не портится), но кнопка обещает исправление, а на монолитах кейсодателя это 20 из 29 находок `string-concat-in-loop`: `09` `rleDecode` → `ffff` вместо `aaabbbccccddddddeffff`, `10` `toRoman` → пусто вместо `MCMXCIV`, `07` `exportCsv` — без заголовка. Исправление в одну строку: `new java.lang.StringBuilder().append(<var>)` (сохраняет и `null` → `"null"`, как `+=`). Тест: `String s = "h"; for … s += i;`. | Роль 2 (2b) | Открыт |
+| Роль 4 | **Баг `StringConcatFix`: теряется начальное значение строки.** `String s = "x"; for (…) s += …;` → `var _sb = new StringBuilder(); … s = _sb.toString();` — `"x"` пропадает. Gate отклоняет (поведение не портится), но кнопка обещает исправление, а на монолитах кейсодателя это 20 из 29 находок `string-concat-in-loop`: `09` `rleDecode` → `ffff` вместо `aaabbbccccddddddeffff`, `10` `toRoman` → пусто вместо `MCMXCIV`, `07` `exportCsv` — без заголовка. Исправление в одну строку: `new java.lang.StringBuilder().append(<var>)` (сохраняет и `null` → `"null"`, как `+=`). Тест: `String s = "h"; for … s += i;`. | Роль 2 (2b) | Сделано — feat/analysis-2b-concat-initial: `append(s)` в начале builder, отказов gate на 08–10 — 0 |
 
 ## Журнал интеграций
 | Когда | Результат | Что сломалось |
