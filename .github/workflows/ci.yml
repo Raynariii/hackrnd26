@@ -18,6 +18,15 @@ jobs:
       - name: Build and test
         working-directory: backend
         run: mvn -B verify
+      - name: Failed tests as annotations
+        if: failure()
+        working-directory: backend
+        run: |
+          # провалившиеся тесты видно в PR без открытия лога: первая строка причины каждого
+          for f in $(grep -l -E "FAILURE|ERROR" */target/surefire-reports/*.txt 2>/dev/null); do
+            grep -A3 -E "<<< (FAILURE|ERROR)" "$f" | tr '\n' ' ' | cut -c1-2500 | sed 's/^/::error title=Тест упал::/'
+            echo
+          done
 
   frontend:
     runs-on: ubuntu-latest
